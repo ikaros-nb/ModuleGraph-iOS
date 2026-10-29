@@ -16,6 +16,8 @@ public struct GraphBuilder: Sendable {
     struct TargetInfo {
         var node: Node
         var sourceDirectories: [URL]
+        /// Single files to scan besides the directories, from the Sources build phase of an Xcode target.
+        var files: [URL] = []
         var declaredDependencies: [PackageManifest.Target.Dependency]
     }
 
@@ -108,12 +110,16 @@ public struct GraphBuilder: Sendable {
                     continue
                 }
                 let sourceDirs = target.sourcePaths.map { project.directory.appendingPathComponent($0) }
-                if scanImports, sourceDirs.isEmpty {
+                let files = target.sourceFiles.map { project.directory.appendingPathComponent($0) }
+                if scanImports, sourceDirs.isEmpty, files.isEmpty {
                     catalog.warnings.append(Warning(code: "no-sources", path: projectPath, message: "no Swift source folder found for Xcode target \(target.name); its imports are not scanned"))
                 }
-                let node = Node(id: target.name, kind: target.kind, package: nil, group: "App", path: sourceDirs.first.map(relative))
+                // Shown as the target's folder: its first source folder, or the one that holds its files.
+                let fileFolders = XcodeProjectReader.outermost(Set(target.sourceFiles.map { ($0 as NSString).deletingLastPathComponent }))
+                let folder = target.sourcePaths.first ?? fileFolders.first
+                let node = Node(id: target.name, kind: target.kind, package: nil, group: "App", path: folder.map { relative(project.directory.appendingPathComponent($0)) })
                 let deps = target.packageProducts.map { PackageManifest.Target.Dependency.product(name: $0, package: nil) }
-                catalog.targets[target.name] = TargetInfo(node: node, sourceDirectories: sourceDirs, declaredDependencies: deps)
+                catalog.targets[target.name] = TargetInfo(node: node, sourceDirectories: sourceDirs, files: files, declaredDependencies: deps)
             }
         }
 
@@ -162,6 +168,11 @@ public struct GraphBuilder: Sendable {
                     continue
                 }
                 let scan = ImportScanner.scan(directory: dir)
+                sourceFiles = (sourceFiles ?? 0) + scan.sourceFiles
+                imports.merge(scan.imports, uniquingKeysWith: +)
+            }
+            if !info.files.isEmpty {
+                let scan = ImportScanner.scan(files: info.files)
                 sourceFiles = (sourceFiles ?? 0) + scan.sourceFiles
                 imports.merge(scan.imports, uniquingKeysWith: +)
             }

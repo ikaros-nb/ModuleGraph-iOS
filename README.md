@@ -74,4 +74,4 @@ Node kinds: `app`, `library`, `test`, `executable`, `macro`, `system`, `external
 - A `Package.swift` that computes its dependencies from the environment is dumped in the current environment only.
 - `import` statements inside `/* */` comments are counted.
 - Tuist, CocoaPods and Carthage are not read. An external SwiftPM package is a leaf, its own graph is not scanned.
-- The import scan reads whole folders: a file excluded from an Xcode target but kept in its folder is still counted.
+- The import scan reads Xcode 16 synchronized folders whole: a file excluded from a target but kept in its folder is still counted.

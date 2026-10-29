@@ -5,8 +5,10 @@ public struct XcodeTarget: Sendable, Equatable {
     public var kind: Node.Kind
     /// Products of Swift packages linked by this target.
     public var packageProducts: [String]
-    /// Source folders, relative to the project directory.
+    /// Source folders (Xcode 16 synchronized folders), relative to the project directory.
     public var sourcePaths: [String]
+    /// Swift files of the Sources build phase outside those folders (classic groups), relative to the project directory.
+    public var sourceFiles: [String] = []
 }
 
 public struct XcodeProject: Sendable {
@@ -108,16 +110,19 @@ public enum XcodeProjectReader {
             let productType = target["productType"] as? String ?? ""
             let productIDs = target["packageProductDependencies"] as? [String] ?? []
             let products = productIDs.compactMap { objects[$0]?["productName"] as? String }
-            // Xcode 16 folders, then the folders of the Swift files in the Sources build phase.
-            var folders = Set((target["fileSystemSynchronizedGroups"] as? [String] ?? []).compactMap(path(of:)))
+            // Xcode 16 folders, then the Swift files of the Sources build phase: the files themselves rather than
+            // their folders, which may hold other targets, or the whole project when a file sits at its root.
+            let folders = outermost(Set((target["fileSystemSynchronizedGroups"] as? [String] ?? []).compactMap(path(of:))))
+            var files: Set<String> = []
             for phaseID in target["buildPhases"] as? [String] ?? [] {
                 guard let phase = objects[phaseID], phase["isa"] as? String == "PBXSourcesBuildPhase" else { continue }
                 for buildFileID in phase["files"] as? [String] ?? [] {
-                    guard let fileID = objects[buildFileID]?["fileRef"] as? String, let file = path(of: fileID), file.hasSuffix(".swift") else { continue }
-                    folders.insert((file as NSString).deletingLastPathComponent)
+                    guard let fileID = objects[buildFileID]?["fileRef"] as? String, let file = path(of: fileID), file.hasSuffix(".swift"),
+                          !folders.contains(where: { file.hasPrefix($0 + "/") }) else { continue }
+                    files.insert(file)
                 }
             }
-            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products.sorted(), sourcePaths: outermost(folders))
+            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products.sorted(), sourcePaths: folders, sourceFiles: files.sorted())
         }.sorted { $0.name < $1.name }
     }
 

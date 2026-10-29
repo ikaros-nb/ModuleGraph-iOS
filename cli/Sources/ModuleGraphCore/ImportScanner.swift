@@ -22,18 +22,38 @@ public enum ImportScanner {
         public var imports: [String: Int]
     }
 
+    /// Scans the Swift files under `directory`, leaving out what belongs to no target or to another one:
+    /// hidden and build folders, Xcode projects, nested packages and package manifests.
     public static func scan(directory: URL) -> Scan {
-        var files = 0
-        var imports: [String: Int] = [:]
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else {
             return Scan(sourceFiles: 0, imports: [:])
         }
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            files += 1
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            for (module, count) in self.imports(in: text) { imports[module, default: 0] += count }
+        var files: [URL] = []
+        for case let url as URL in enumerator {
+            let name = url.lastPathComponent
+            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                if ProjectLocator.ignoredDirectories.contains(name) || name.hasSuffix(".xcodeproj") || name.hasSuffix(".xcworkspace")
+                    || fm.fileExists(atPath: url.appendingPathComponent("Package.swift").path) {
+                    enumerator.skipDescendants()
+                }
+            } else if url.pathExtension == "swift", name != "Package.swift", !name.hasPrefix("Package@swift-") {
+                files.append(url)
+            }
         }
-        return Scan(sourceFiles: files, imports: imports)
+        return scan(files: files)
+    }
+
+    /// Scans the given Swift files; one that can't be read isn't counted.
+    public static func scan(files: [URL]) -> Scan {
+        var count = 0
+        var imports: [String: Int] = [:]
+        for url in files {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            count += 1
+            for (module, occurrences) in self.imports(in: text) { imports[module, default: 0] += occurrences }
+        }
+        return Scan(sourceFiles: count, imports: imports)
     }
 
     public static let systemModules: Set<String> = [

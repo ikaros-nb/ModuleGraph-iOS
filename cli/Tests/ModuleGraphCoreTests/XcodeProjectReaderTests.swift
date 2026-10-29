@@ -72,6 +72,9 @@ import Testing
         }
         """
         let targets = try XcodeProjectReader.parsePbxproj(Data(text.utf8))
-        #expect(targets == [XcodeTarget(name: "Widget", kind: .app, packageProducts: [], sourcePaths: ["Shared", "Widget"])])
+        #expect(targets == [XcodeTarget(
+            name: "Widget", kind: .app, packageProducts: [],
+            sourcePaths: ["Shared"], sourceFiles: ["Widget/Views/Row.swift", "Widget/Widget.swift"]
+        )])
     }
 }
