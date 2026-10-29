@@ -118,4 +118,25 @@ import Testing
         let message = "/Users/someone/MyApp/Broken/Package.swift: error, see /Users/someone/Library/Logs and /Users/someone/MyApp"
         #expect(builder.redact(message, home: "/Users/someone") == "Broken/Package.swift: error, see ~/Library/Logs and .")
     }
+
+    @Test func resolvesByNameToATargetOfTheSamePackageFirst() throws {
+        // Kit exports a product called Shared made of KitShared; Other has a target called Shared.
+        let kit = try manifest("""
+        { "name": "Kit", "dependencies": [], "products": [ { "name": "Shared", "targets": ["KitShared"] } ],
+          "targets": [ { "name": "KitShared", "type": "regular", "dependencies": [] } ] }
+        """)
+        let other = try manifest("""
+        { "name": "Other", "dependencies": [], "products": [],
+          "targets": [ { "name": "Shared", "type": "regular", "dependencies": [] },
+                       { "name": "Feature", "type": "regular", "dependencies": [ { "byName": ["Shared", null] } ] } ] }
+        """)
+        let graph = GraphBuilder(root: root, includeTests: false, scanImports: false).build(
+            packages: [
+                DumpedPackage(directory: root.appendingPathComponent("Kit"), manifest: kit),
+                DumpedPackage(directory: root.appendingPathComponent("Other"), manifest: other),
+            ],
+            projects: [], warnings: [], now: now
+        )
+        #expect(graph.edges == [Edge(from: "Feature", to: "Shared", kind: .declared)])
+    }
 }

@@ -144,6 +144,9 @@ public struct GraphBuilder: Sendable {
                 let resolved: [String]
                 switch dependency {
                 case .product(let product, let package): name = product; resolved = catalog.resolve(product: product, package: package)
+                // As SwiftPM does: a target of the same package first, then a product.
+                case .byName(let target) where catalog.targets[target].map({ $0.node.package != nil && $0.node.package == info.node.package }) == true:
+                    name = target; resolved = [target]
                 case .byName(let target): name = target; resolved = catalog.resolve(product: target)
                 case .target(let target): name = target; resolved = catalog.targets[target] != nil ? [target] : []
                 }
@@ -184,10 +187,6 @@ public struct GraphBuilder: Sendable {
                 } else if ImportScanner.systemModules.contains(module) {
                     nodes[module] = nodes[module] ?? Node(id: module, kind: .system)
                     edges.insert(Edge(from: id, to: module, kind: .import, count: count))
-                } else if let ids = catalog.products[module], !ids.isEmpty {
-                    for target in ids where catalog.targets[target] != nil {
-                        edges.insert(Edge(from: id, to: target, kind: .import, count: count))
-                    }
                 } else {
                     nodes[module] = nodes[module] ?? Node(id: module, kind: .external)
                     edges.insert(Edge(from: id, to: module, kind: .import, count: count))
