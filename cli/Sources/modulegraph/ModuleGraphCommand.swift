@@ -37,6 +37,13 @@ struct Scan: AsyncParsableCommand {
             throw ValidationError("\(root) is not a directory")
         }
         let graph = await ModuleGraphCore.Scanner.scan(root: rootURL, options: .init(includeTests: includeTests, scanImports: !noImports))
+        // An empty graph is a failure for a script, not a result: report why and write nothing.
+        guard !graph.nodes.isEmpty else {
+            printWarnings(graph)
+            throw Failure(description: graph.warnings.isEmpty
+                ? "no Package.swift or .xcodeproj found under \(root)"
+                : "no module could be read under \(root); see the warnings above")
+        }
         let data = try GraphEncoder.encode(graph, pretty: pretty || output == nil)
         if let output {
             try data.write(to: URL(fileURLWithPath: output))
@@ -45,8 +52,16 @@ struct Scan: AsyncParsableCommand {
             FileHandle.standardOutput.write(data)
             FileHandle.standardOutput.write(Data("\n".utf8))
         }
+        printWarnings(graph)
+    }
+
+    func printWarnings(_ graph: Graph) {
         for warning in graph.warnings {
             FileHandle.standardError.write(Data("warning[\(warning.code)] \(warning.path ?? ""): \(warning.message)\n".utf8))
         }
+    }
+
+    struct Failure: Error, CustomStringConvertible {
+        var description: String
     }
 }
