@@ -10,6 +10,10 @@ describe("parseGraph", () => {
   it("rejects a dangling edge", () => {
     expect(() => parseGraph(JSON.stringify({ version: 1, project: "x", nodes: [], edges: [{ from: "a", to: "b", kind: "declared" }] }))).toThrow(GraphError);
   });
+  it("rejects a node defined twice", () => {
+    const nodes = [{ id: "a", kind: "library" }, { id: "a", kind: "app" }];
+    expect(() => parseGraph(JSON.stringify({ version: 1, project: "x", nodes, edges: [] }))).toThrow(GraphError);
+  });
   it("rejects a wrong version", () => {
     expect(() => parseGraph(JSON.stringify({ version: 2, project: "x", nodes: [], edges: [] }))).toThrow(GraphError);
   });

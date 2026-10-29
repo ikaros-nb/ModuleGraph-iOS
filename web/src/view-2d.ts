@@ -5,6 +5,11 @@ import { edgeColors, kindColors, labelColor, onColorSchemeChange } from "./theme
 
 type Position = { x: number; y: number };
 
+// Cytoscape ids share one namespace across nodes and edges: a prefix per element kind keeps a module id
+// from a file (any string) from colliding with an edge, a package box or a ring. `key` holds the module id.
+const nodeID = (id: string) => `n:${id}`;
+type Keyed = { data(name: "key"): string | undefined };
+
 cytoscape.use(fcose);
 
 export class View2D {
@@ -61,7 +66,7 @@ export class View2D {
     this.cy.on("tap", "node", (event) => {
       const node = event.target;
       if (node.isParent()) return;
-      this.onSelect(node.id());
+      this.onSelect(node.data("key"));
     });
     this.cy.on("tap", (event) => {
       if (event.target === this.cy) this.onSelect(null);
@@ -99,14 +104,14 @@ export class View2D {
           if (ids.length === 0) continue;
           const needed = (ids.length * 150) / (2 * Math.PI);
           radius = depth === 0 && ids.length === 1 ? 0 : Math.max(radius + 150, needed);
-          if (radius > 0) this.ringGuides.push({ id: `ring:${depth}`, label: `Layer ${depth}`, radius });
+          if (radius > 0) this.ringGuides.push({ id: `r:${depth}`, label: `Layer ${depth}`, radius });
           const offset = depth * 0.9;
           ids.forEach((id, i) => {
             const angle = offset + (2 * Math.PI * i) / ids.length - Math.PI / 2;
             positions[id] = { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
           });
         }
-        return { name: "preset", animate: false, padding: 40, positions: (node: { id(): string }) => positions[node.id()] };
+        return { name: "preset", animate: false, padding: 40, positions: (node: Keyed) => positions[node.data("key") ?? ""] };
       }
       case "layers": {
         // One row per depth, the app on top and the leaves at the bottom.
@@ -121,7 +126,7 @@ export class View2D {
             positions[id] = { x: step * (i + 1), y: (maxDepth - depth) * 180 };
           });
         }
-        return { name: "preset", animate: false, padding: 40, positions: (node: { id(): string }) => positions[node.id()] };
+        return { name: "preset", animate: false, padding: 40, positions: (node: Keyed) => positions[node.data("key") ?? ""] };
       }
       default:
         // Seeded from the previous Force positions when there are some, so that toggling a filter doesn't reshuffle the graph.
@@ -139,18 +144,18 @@ export class View2D {
     ]);
     if (topology === this.topology) {
       this.cy.nodes(".highlight").removeClass("highlight");
-      this.cy.nodes().filter((n) => vm.highlighted.has(n.id())).addClass("highlight");
+      this.cy.nodes().filter((n) => vm.highlighted.has(n.data("key"))).addClass("highlight");
       return;
     }
     const seeds = compound && this.topology.startsWith('["force"') ? this.seedPositions(vm) : null;
-    this.topology = topology;
     const elements = [
-      ...(compound ? [...vm.packages.keys()] : []).map((name) => ({ data: { id: `pkg:${name}`, label: name, color: "#8a94a6", size: 1 } })),
+      ...(compound ? [...vm.packages.keys()] : []).map((name) => ({ data: { id: `p:${name}`, label: name, color: "#8a94a6", size: 1 } })),
       ...vm.nodes.map((n) => {
-        const parent = compound && vm.packages.has(n.package ?? "") ? `pkg:${n.package}` : undefined;
+        const parent = compound && vm.packages.has(n.package ?? "") ? `p:${n.package}` : undefined;
         return {
           data: {
-            id: n.id,
+            id: nodeID(n.id),
+            key: n.id,
             label: n.id,
             color: kindColors[n.kind],
             size: 24 + Math.min(40, Math.sqrt(n.sourceFiles ?? 4) * 5),
@@ -160,11 +165,11 @@ export class View2D {
           position: seeds?.get(n.id),
         };
       }),
-      ...vm.edges.map((e) => ({
+      ...vm.edges.map((e, i) => ({
         data: {
-          id: `${e.from}->${e.to}`,
-          source: e.from,
-          target: e.to,
+          id: `e:${i}`,
+          source: nodeID(e.from),
+          target: nodeID(e.to),
           color: edgeColors[e.status],
           status: e.status,
           width: 1 + Math.min(5, Math.log2(1 + e.count)),
@@ -180,12 +185,14 @@ export class View2D {
     this.cy.layout({ ...options, eles: this.cy.nodes().not(".ring") } as never).run();
     this.cy.nodes(".ring").positions({ x: 0, y: 0 });
     this.cy.fit(undefined, 40);
+    // Only once it is drawn: a graph that failed to render must not be taken for the one on screen.
+    this.topology = topology;
   }
 
   /** Current positions for the nodes already shown, next to a neighbour for the new ones. Null when most nodes are new. */
   private seedPositions(vm: ViewModel): Map<string, Position> | null {
     const previous = new Map<string, Position>();
-    this.cy.nodes().not(".ring").not(":parent").forEach((n) => void previous.set(n.id(), { ...n.position() }));
+    this.cy.nodes().not(".ring").not(":parent").forEach((n) => void previous.set(n.data("key"), { ...n.position() }));
     if (vm.nodes.filter((n) => previous.has(n.id)).length < vm.nodes.length / 2) return null;
     const seeds = new Map<string, Position>();
     for (const n of vm.nodes) {
@@ -205,7 +212,7 @@ export class View2D {
     this.cy.elements().removeClass("dim");
     this.cy.$(":selected").unselect();
     if (!id) return;
-    const node = this.cy.$id(id);
+    const node = this.cy.$id(nodeID(id));
     if (node.empty()) return;
     node.select();
     const hood = node.closedNeighborhood();

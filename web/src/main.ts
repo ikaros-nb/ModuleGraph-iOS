@@ -27,15 +27,19 @@ function showError(message: string) {
   errorTimer = window.setTimeout(() => (errorBox.hidden = true), 8000);
 }
 
-/** Parse and show a graph file. Returns false, after showing the error, when it isn't one. */
+/**
+ * Parse and show a graph file. Returns false, after showing the error, when it isn't one: the graph on
+ * screen stays when the file doesn't parse, and the dropzone comes back when it parses but can't be drawn.
+ */
 function load(text: string): boolean {
+  let parsed: Graph;
   try {
-    graph = parseGraph(text);
+    parsed = parseGraph(text);
   } catch (error) {
     showError(error instanceof GraphError ? error.message : String(error));
     return false;
   }
-  rememberGraph(text);
+  graph = parsed;
   selected = null;
   filters = { ...defaultFilters, edgeMode: graph.edges.some((e) => e.kind === "import") ? "both" : "declared" };
   renderFocusOptions();
@@ -43,7 +47,17 @@ function load(text: string): boolean {
   syncControls();
   dropzone.hidden = true;
   app.hidden = false;
-  render();
+  try {
+    render();
+  } catch (error) {
+    graph = null;
+    app.hidden = true;
+    dropzone.hidden = false;
+    showError(`Cannot draw this graph: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+  // Only a file that rendered is kept: a stored one is shown again on every visit.
+  rememberGraph(text);
   return true;
 }
 

@@ -24,7 +24,11 @@ export function parseGraph(text: string): Graph {
       .join("\n");
     throw new GraphError(`Not a ModuleGraph file:\n${details}`);
   }
-  const ids = new Set(json.nodes.map((n) => n.id));
+  const ids = new Set<string>();
+  for (const n of json.nodes) {
+    if (ids.has(n.id)) throw new GraphError(`Node ${n.id} is defined twice`);
+    ids.add(n.id);
+  }
   const dangling = json.edges.find((e) => !ids.has(e.from) || !ids.has(e.to));
   if (dangling) throw new GraphError(`Edge ${dangling.from} → ${dangling.to} references an unknown node`);
   return json;
