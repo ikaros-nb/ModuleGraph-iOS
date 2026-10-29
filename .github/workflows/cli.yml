@@ -1,7 +1,7 @@
 name: CLI tests
 on:
   push:
-    paths: ["cli/**", "SampleApp/**", ".github/workflows/cli.yml"]
+    paths: ["cli/**", "schema/**", "SampleApp/**", ".github/workflows/cli.yml"]
   pull_request:
 jobs:
   test:

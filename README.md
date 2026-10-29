@@ -45,7 +45,7 @@ A single page, no backend. Open a file, drop one, click the example, or pass `?u
 - **Edges**: declared, imports, both, or *gaps*: declared but never imported (probably unused) in orange, imported but not declared (reached transitively) dashed red.
 - Hide tests, system frameworks and external packages, focus on one module and its neighbours at N hops, search, detail panel with dependencies and dependents.
 
-`npm test` runs the view-model tests, `npm run build` produces `dist/`, deployed to GitHub Pages by `.github/workflows/pages.yml`.
+`npm test` runs the view-model tests and `npm run build` type-checks and produces `dist/`: both run on every pull request (`.github/workflows/web.yml`), and `dist/` is deployed to GitHub Pages by `.github/workflows/pages.yml`.
 
 ## JSON format
 
