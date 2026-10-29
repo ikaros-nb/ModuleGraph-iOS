@@ -7,7 +7,6 @@
   "properties": {
     "version": { "const": 1 },
     "project": { "type": "string" },
-    "root": { "type": "string" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "nodes": {
       "type": "array",

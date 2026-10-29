@@ -26,7 +26,6 @@ export interface GraphWarning {
 export interface Graph {
   version: 1;
   project: string;
-  root?: string;
   generatedAt?: string;
   nodes: GraphNode[];
   edges: GraphEdge[];
