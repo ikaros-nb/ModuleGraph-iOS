@@ -12,6 +12,17 @@ import Testing
         #expect(output.status == 3)
         #expect(output.stdout.count == 1_000_000)
         #expect(output.stderr.count == 1_000_000)
+        #expect(!output.timedOut)
+    }
+
+    @Test func terminatesAProcessPastItsTimeout() async throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        let start = Date()
+        let output = try await ManifestDumper.run(process, timeout: 0.2)
+        #expect(output.timedOut)
+        #expect(Date().timeIntervalSince(start) < 5)
     }
 
     @Test func keepsOnlyTheErrorLinesOfAFailedDump() {

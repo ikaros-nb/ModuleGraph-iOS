@@ -68,6 +68,10 @@ public enum ManifestDumper {
         public var message: String
     }
 
+    /// Longer than any dump takes, even one that compiles its manifest for the first time: past it, SwiftPM
+    /// is most likely waiting for the lock of another instance (Xcode resolving the same package).
+    static let timeout: TimeInterval = 120
+
     public static func dump(directory: URL) async throws -> PackageManifest {
         let process = Process()
         // `xcrun` reaches the Xcode toolchain directly, so a `.swift-version` file that a toolchain
@@ -79,7 +83,10 @@ public enum ManifestDumper {
         }
         process.arguments = ["swift", "package", "dump-package"]
         process.currentDirectoryURL = directory
-        let output = try await run(process)
+        let output = try await run(process, timeout: timeout)
+        if output.timedOut {
+            throw Failure(directory: directory, message: "swift package dump-package didn't finish within \(Int(timeout)) s")
+        }
         guard output.status == 0 else {
             let message = errorSummary(String(decoding: output.stderr, as: UTF8.self))
             throw Failure(directory: directory, message: message.isEmpty ? "exit \(output.status)" : message)
@@ -102,8 +109,9 @@ public enum ManifestDumper {
     }
 
     /// Runs `process` to completion on a Dispatch thread rather than the cooperative pool, draining
-    /// stdout and stderr concurrently so that a full pipe can never block the child.
-    static func run(_ process: Process) async throws -> (status: Int32, stdout: Data, stderr: Data) {
+    /// stdout and stderr concurrently so that a full pipe can never block the child. Past `timeout`,
+    /// the process is terminated and the result says so.
+    static func run(_ process: Process, timeout: TimeInterval? = nil) async throws -> (status: Int32, stdout: Data, stderr: Data, timedOut: Bool) {
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
@@ -115,13 +123,19 @@ public enum ManifestDumper {
                 } catch {
                     return continuation.resume(throwing: error)
                 }
+                if let timeout {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                        if process.isRunning { process.terminate() }
+                    }
+                }
                 let errors = DataBox()
                 let group = DispatchGroup()
                 DispatchQueue.global().async(group: group) { errors.data = stderr.fileHandleForReading.readDataToEndOfFile() }
                 let output = stdout.fileHandleForReading.readDataToEndOfFile()
                 group.wait()
                 process.waitUntilExit()
-                continuation.resume(returning: (process.terminationStatus, output, errors.data))
+                let timedOut = timeout != nil && process.terminationReason == .uncaughtSignal
+                continuation.resume(returning: (process.terminationStatus, output, errors.data, timedOut))
             }
         }
     }
