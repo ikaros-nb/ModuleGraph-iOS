@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildViewModel, defaultFilters, mergeEdges } from "./graph-model";
+import { buildViewModel, defaultFilters, mergeEdges, transitiveReduction } from "./graph-model";
 import type { Graph } from "./types";
 
 const graph: Graph = {
@@ -83,5 +83,15 @@ describe("layers", () => {
     expect(vm.transitiveHidden).toBe(1);
     expect(vm.isolated).toEqual(["Lonely"]);
     expect(vm.nodes.map((n) => n.id)).toEqual(["A", "B", "C"]);
+  });
+
+  it("keeps a node connected to a cycle it depends on", () => {
+    const edges = [{ from: "A", to: "B" }, { from: "A", to: "C" }, { from: "B", to: "C" }, { from: "C", to: "B" }];
+    expect(transitiveReduction(edges)).toEqual(edges);
+  });
+
+  it("reduces the edges that go around a cycle", () => {
+    const edges = [{ from: "A", to: "B" }, { from: "B", to: "C" }, { from: "C", to: "B" }, { from: "C", to: "D" }, { from: "A", to: "D" }];
+    expect(transitiveReduction(edges).map((e) => `${e.from}>${e.to}`)).toEqual(["A>B", "B>C", "C>B", "C>D"]);
   });
 });

@@ -183,28 +183,74 @@ export function layerDepths(nodeIds: string[], edges: { from: string; to: string
   return depth;
 }
 
-/** Remove every edge A→C when another path A→…→C exists. */
-export function transitiveReduction<E extends { from: string; to: string }>(edges: E[]): E[] {
-  const out = new Map<string, Set<string>>();
-  for (const e of edges) out.set(e.from, (out.get(e.from) ?? new Set()).add(e.to));
-  const reachCache = new Map<string, Set<string>>();
-  const reach = (id: string, stack = new Set<string>()): Set<string> => {
-    const cached = reachCache.get(id);
-    if (cached) return cached;
-    if (stack.has(id)) return new Set();
-    stack.add(id);
-    const result = new Set<string>();
-    for (const next of out.get(id) ?? []) {
-      result.add(next);
-      for (const r of reach(next, stack)) result.add(r);
+/** Strongly connected component of every node (Tarjan): the nodes of a cycle share one. */
+function components(edges: { from: string; to: string }[]): Map<string, number> {
+  const out = new Map<string, string[]>();
+  for (const e of edges) out.set(e.from, [...(out.get(e.from) ?? []), e.to]);
+  const ids = new Set(edges.flatMap((e) => [e.from, e.to]));
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const component = new Map<string, number>();
+  let next = 0;
+  let count = 0;
+  const visit = (id: string) => {
+    index.set(id, next);
+    low.set(id, next++);
+    stack.push(id);
+    onStack.add(id);
+    for (const to of out.get(id) ?? []) {
+      if (!index.has(to)) {
+        visit(to);
+        low.set(id, Math.min(low.get(id)!, low.get(to)!));
+      } else if (onStack.has(to)) {
+        low.set(id, Math.min(low.get(id)!, index.get(to)!));
+      }
     }
-    stack.delete(id);
-    reachCache.set(id, result);
+    if (low.get(id) === index.get(id)) {
+      let member: string;
+      do {
+        member = stack.pop()!;
+        onStack.delete(member);
+        component.set(member, count);
+      } while (member !== id);
+      count++;
+    }
+  };
+  for (const id of ids) if (!index.has(id)) visit(id);
+  return component;
+}
+
+/**
+ * Remove every edge A→C when another path A→…→C exists. A cycle is reduced as one node and keeps all its
+ * edges: removing them by the same rule could take away every path out of a node.
+ */
+export function transitiveReduction<E extends { from: string; to: string }>(edges: E[]): E[] {
+  const component = components(edges);
+  const out = new Map<number, Set<number>>();
+  for (const e of edges) {
+    const [a, b] = [component.get(e.from)!, component.get(e.to)!];
+    if (a !== b) out.set(a, (out.get(a) ?? new Set()).add(b));
+  }
+  // Components form a DAG, so a plain memoised walk terminates.
+  const reachCache = new Map<number, Set<number>>();
+  const reach = (c: number): Set<number> => {
+    const cached = reachCache.get(c);
+    if (cached) return cached;
+    const result = new Set<number>();
+    for (const next of out.get(c) ?? []) {
+      result.add(next);
+      for (const r of reach(next)) result.add(r);
+    }
+    reachCache.set(c, result);
     return result;
   };
   return edges.filter((e) => {
-    for (const mid of out.get(e.from) ?? []) {
-      if (mid !== e.to && reach(mid).has(e.to)) return false;
+    const [a, b] = [component.get(e.from)!, component.get(e.to)!];
+    if (a === b) return true;
+    for (const mid of out.get(a) ?? []) {
+      if (mid !== b && reach(mid).has(b)) return false;
     }
     return true;
   });
