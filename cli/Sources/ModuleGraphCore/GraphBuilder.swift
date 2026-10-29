@@ -197,6 +197,23 @@ public struct GraphBuilder: Sendable {
         return path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : url.lastPathComponent
     }
 
+    /// `message` with the root's absolute path made relative and the home folder replaced by `~`.
+    /// The root is matched both as given and as `realpath` spells it, the way tools report it (`/tmp` → `/private/tmp`):
+    /// Foundation's own symlink resolution drops that `/private`.
+    func redact(_ message: String, home: String = NSHomeDirectory()) -> String {
+        var message = message
+        let realPath = realpath(root.path, nil).map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        }
+        // The longest first: `/tmp/x` is also the end of `/private/tmp/x`.
+        for rootPath in Set([root.path, realPath ?? root.path]).sorted(by: { $0.count > $1.count }) where rootPath != "/" {
+            message = message.replacingOccurrences(of: rootPath + "/", with: "").replacingOccurrences(of: rootPath, with: ".")
+        }
+        if !home.isEmpty, home != "/" { message = message.replacingOccurrences(of: home, with: "~") }
+        return message
+    }
+
     func groupName(for packageDir: URL) -> String? {
         let components = relative(packageDir).split(separator: "/").map(String.init)
         guard components.count >= 2 else { return components.first }

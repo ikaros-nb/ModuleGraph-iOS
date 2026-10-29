@@ -112,4 +112,10 @@ import Testing
             Warning(code: "unresolved-import", path: "App", message: "App imports Mystery, which is not a known target"),
         ])
     }
+
+    @Test func redactsAbsolutePathsInMessages() {
+        let builder = GraphBuilder(root: URL(fileURLWithPath: "/Users/someone/MyApp"), includeTests: false, scanImports: false)
+        let message = "/Users/someone/MyApp/Broken/Package.swift: error, see /Users/someone/Library/Logs and /Users/someone/MyApp"
+        #expect(builder.redact(message, home: "/Users/someone") == "Broken/Package.swift: error, see ~/Library/Logs and .")
+    }
 }

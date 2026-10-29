@@ -81,7 +81,7 @@ public enum ManifestDumper {
         process.currentDirectoryURL = directory
         let output = try await run(process)
         guard output.status == 0 else {
-            let message = String(decoding: output.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let message = errorSummary(String(decoding: output.stderr, as: UTF8.self))
             throw Failure(directory: directory, message: message.isEmpty ? "exit \(output.status)" : message)
         }
         do {
@@ -89,6 +89,16 @@ public enum ManifestDumper {
         } catch {
             throw Failure(directory: directory, message: "cannot decode dump-package output: \(error)")
         }
+    }
+
+    /// The `error:` lines of SwiftPM's output, without the swiftc invocation it appends to them: the rest
+    /// quotes the manifest's source and the toolchain's paths, which the graph must not carry.
+    static func errorSummary(_ stderr: String) -> String {
+        let lines = stderr.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let errors = lines.filter { $0.hasPrefix("error:") || $0.contains(": error:") }
+        return (errors.isEmpty ? lines : errors)
+            .map { $0.replacing(/\s*\(compiled with: \[.*\]\)/, with: "") }
+            .joined(separator: "\n")
     }
 
     /// Runs `process` to completion on a Dispatch thread rather than the cooperative pool, draining
