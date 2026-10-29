@@ -103,6 +103,12 @@
     },
     {
       "count" : 1,
+      "from" : "DesignSystem",
+      "kind" : "import",
+      "to" : "SwiftUI"
+    },
+    {
+      "count" : 1,
       "from" : "SampleApp",
       "kind" : "import",
       "to" : "Analytics"
@@ -130,6 +136,17 @@
       "to" : "Checkout"
     },
     {
+      "from" : "SampleApp",
+      "kind" : "declared",
+      "to" : "DesignSystem"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "DesignSystem"
+    },
+    {
       "count" : 1,
       "from" : "SampleApp",
       "kind" : "import",
@@ -151,6 +168,11 @@
       "from" : "SampleApp",
       "kind" : "import",
       "to" : "SwiftUI"
+    },
+    {
+      "from" : "SampleAppTests",
+      "kind" : "declared",
+      "to" : "SampleApp"
     },
     {
       "count" : 1,
@@ -188,7 +210,7 @@
       "to" : "WidgetKit"
     }
   ],
-  "generatedAt" : "2026-10-29T12:54:46Z",
+  "generatedAt" : "2026-10-29T13:16:46Z",
   "nodes" : [
     {
       "group" : "Packages",
@@ -232,6 +254,13 @@
       "kind" : "test",
       "package" : "Core",
       "path" : "Packages/Core/Tests/CoreTests",
+      "sourceFiles" : 1
+    },
+    {
+      "group" : "App",
+      "id" : "DesignSystem",
+      "kind" : "library",
+      "path" : "DesignSystem",
       "sourceFiles" : 1
     },
     {

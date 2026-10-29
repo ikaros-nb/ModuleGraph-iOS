@@ -119,6 +119,7 @@ public struct GraphBuilder: Sendable {
                 let folder = target.sourcePaths.first ?? fileFolders.first
                 let node = Node(id: target.name, kind: target.kind, package: nil, group: "App", path: folder.map { relative(project.directory.appendingPathComponent($0)) })
                 let deps = target.packageProducts.map { PackageManifest.Target.Dependency.product(name: $0, package: nil) }
+                    + target.targetDependencies.map { PackageManifest.Target.Dependency.target($0) }
                 catalog.targets[target.name] = TargetInfo(node: node, sourceDirectories: sourceDirs, files: files, declaredDependencies: deps)
             }
         }

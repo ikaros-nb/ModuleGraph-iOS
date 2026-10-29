@@ -11,6 +11,7 @@
 			children = (
 				A1000000000000000000001 /* SampleApp */,
 				A1000000000000000000002 /* SampleAppTests */,
+				A1000000000000000000003 /* DesignSystem */,
 				A2000000000000000000001 /* Extensions */,
 			);
 			sourceTree = "<group>";
@@ -57,10 +58,19 @@
 			path = SampleAppTests;
 			sourceTree = "<group>";
 		};
+		A1000000000000000000003 /* DesignSystem */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
 		B1000000000000000000001 /* SampleApp */ = {
 			isa = PBXNativeTarget;
 			name = SampleApp;
 			productType = "com.apple.product-type.application";
+			dependencies = (
+				E1000000000000000000001 /* DesignSystem */,
+				E1000000000000000000002 /* SampleWidget */,
+			);
 			fileSystemSynchronizedGroups = (
 				A1000000000000000000001 /* SampleApp */,
 			);
@@ -85,9 +95,32 @@
 			isa = PBXNativeTarget;
 			name = SampleAppTests;
 			productType = "com.apple.product-type.bundle.unit-test";
+			dependencies = (
+				E1000000000000000000003 /* SampleApp */,
+			);
 			fileSystemSynchronizedGroups = (
 				A1000000000000000000002 /* SampleAppTests */,
 			);
+		};
+		B1000000000000000000004 /* DesignSystem */ = {
+			isa = PBXNativeTarget;
+			name = DesignSystem;
+			productType = "com.apple.product-type.framework";
+			fileSystemSynchronizedGroups = (
+				A1000000000000000000003 /* DesignSystem */,
+			);
+		};
+		E1000000000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1000000000000000000004 /* DesignSystem */;
+		};
+		E1000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1000000000000000000003 /* SampleWidget */;
+		};
+		E1000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B1000000000000000000001 /* SampleApp */;
 		};
 		C1000000000000000000001 /* Catalog */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -25,7 +25,7 @@ modulegraph scan [<root>] [--output <file>] [--no-imports] [--include-tests] [--
 What it reads:
 
 - Every `Package.swift` under the root, through `swift package dump-package`. Each target becomes a node, product dependencies are resolved to the targets that provide them, and remote packages become `external` nodes.
-- Every `*.xcodeproj`, both the `project.pbxproj` and the newer `project.xcproj` format. Each native target becomes a node linked to the package products it depends on; a product that no local package provides is an `external` node. Sources come from the Xcode 16 folders, or from the Sources build phase in projects with classic groups.
+- Every `*.xcodeproj`, both the `project.pbxproj` and the newer `project.xcproj` format. Each native target becomes a node linked to the package products and the other targets of the project it depends on, except the app extensions it embeds; a product that no local package provides is an `external` node. Sources come from the Xcode 16 folders, or from the Sources build phase in projects with classic groups.
 - Every `import` statement of the Swift sources of each target (skip with `--no-imports`), which gives the effective graph next to the declared one. Apple frameworks are reported as `system` nodes.
 
 Folders such as `.build`, `DerivedData`, `Pods`, `node_modules` and the simple entries of the root `.gitignore` are skipped. Every path in the output is relative to the root.
@@ -74,4 +74,5 @@ Node kinds: `app`, `library`, `test`, `executable`, `macro`, `system`, `external
 - A `Package.swift` that computes its dependencies from the environment is dumped in the current environment only.
 - `import` statements inside `/* */` comments are counted.
 - Tuist, CocoaPods and Carthage are not read. An external SwiftPM package is a leaf, its own graph is not scanned.
+- In the `project.xcproj` format, only the package dependencies of a target are read, not its dependencies on other targets.
 - The import scan reads Xcode 16 synchronized folders whole: a file excluded from a target but kept in its folder is still counted.

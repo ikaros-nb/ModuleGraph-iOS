@@ -9,6 +9,8 @@ public struct XcodeTarget: Sendable, Equatable {
     public var sourcePaths: [String]
     /// Swift files of the Sources build phase outside those folders (classic groups), relative to the project directory.
     public var sourceFiles: [String] = []
+    /// Other targets of the project this one depends on, by name.
+    public var targetDependencies: [String] = []
 }
 
 public struct XcodeProject: Sendable {
@@ -105,9 +107,10 @@ public enum XcodeProjectReader {
             default: return nil
             }
         }
-        return objects.values.filter { $0["isa"] as? String == "PBXNativeTarget" }.compactMap { target in
-            guard let name = target["name"] as? String else { return nil }
-            let productType = target["productType"] as? String ?? ""
+        let nativeTargets = objects.filter { $0.value["isa"] as? String == "PBXNativeTarget" }
+        let kinds = nativeTargets.mapValues { kind(forProductType: $0["productType"] as? String ?? "") }
+        return nativeTargets.compactMap { id, target in
+            guard let name = target["name"] as? String, let targetKind = kinds[id] else { return nil }
             let productIDs = target["packageProductDependencies"] as? [String] ?? []
             let products = productIDs.compactMap { objects[$0]?["productName"] as? String }
             // Xcode 16 folders, then the Swift files of the Sources build phase: the files themselves rather than
@@ -122,7 +125,17 @@ public enum XcodeProjectReader {
                     files.insert(file)
                 }
             }
-            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products.sorted(), sourcePaths: folders, sourceFiles: files.sorted())
+            // Targets of the same project; one from another project has no `target`. Embedding an app extension
+            // or a watch app is no module dependency, nothing imports them: only a test may depend on an app, its host.
+            let dependencies = (target["dependencies"] as? [String] ?? []).compactMap { dependencyID -> String? in
+                guard let targetID = objects[dependencyID]?["target"] as? String, let kind = kinds[targetID],
+                      kind != .app || targetKind == .test else { return nil }
+                return objects[targetID]?["name"] as? String
+            }
+            return XcodeTarget(
+                name: name, kind: targetKind, packageProducts: products.sorted(),
+                sourcePaths: folders, sourceFiles: files.sorted(), targetDependencies: dependencies.sorted()
+            )
         }.sorted { $0.name < $1.name }
     }
 

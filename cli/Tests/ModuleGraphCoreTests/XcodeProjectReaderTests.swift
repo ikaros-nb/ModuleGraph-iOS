@@ -77,4 +77,25 @@ import Testing
             sourcePaths: ["Shared"], sourceFiles: ["Widget/Views/Row.swift", "Widget/Widget.swift"]
         )])
     }
+
+    @Test func readsTargetDependenciesButNotEmbeddedApps() throws {
+        let text = """
+        {
+          objects = {
+            T1 = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; dependencies = ( D1, D2, D3 ); };
+            T2 = { isa = PBXNativeTarget; name = UI; productType = "com.apple.product-type.framework"; };
+            T3 = { isa = PBXNativeTarget; name = Widget; productType = "com.apple.product-type.app-extension"; };
+            T4 = { isa = PBXNativeTarget; name = AppTests; productType = "com.apple.product-type.bundle.unit-test"; dependencies = ( D4 ); };
+            D1 = { isa = PBXTargetDependency; target = T2; };
+            D2 = { isa = PBXTargetDependency; target = T3; };
+            D3 = { isa = PBXTargetDependency; name = OtherProjectTarget; };
+            D4 = { isa = PBXTargetDependency; target = T1; };
+          };
+        }
+        """
+        let targets = try XcodeProjectReader.parsePbxproj(Data(text.utf8))
+        #expect(targets.first { $0.name == "App" }?.targetDependencies == ["UI"])
+        #expect(targets.first { $0.name == "AppTests" }?.targetDependencies == ["App"])
+        #expect(targets.first { $0.name == "UI" }?.targetDependencies == [])
+    }
 }
