@@ -1,0 +1,247 @@
+{
+  "edges" : [
+    {
+      "from" : "Analytics",
+      "kind" : "declared",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Analytics",
+      "kind" : "import",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Analytics",
+      "kind" : "import",
+      "to" : "OSLog"
+    },
+    {
+      "from" : "Catalog",
+      "kind" : "declared",
+      "to" : "Analytics"
+    },
+    {
+      "from" : "Catalog",
+      "kind" : "declared",
+      "to" : "Collections"
+    },
+    {
+      "count" : 1,
+      "from" : "Catalog",
+      "kind" : "import",
+      "to" : "Collections"
+    },
+    {
+      "from" : "Catalog",
+      "kind" : "declared",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Catalog",
+      "kind" : "import",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Catalog",
+      "kind" : "import",
+      "to" : "SwiftUI"
+    },
+    {
+      "from" : "Checkout",
+      "kind" : "declared",
+      "to" : "Catalog"
+    },
+    {
+      "count" : 1,
+      "from" : "Checkout",
+      "kind" : "import",
+      "to" : "Catalog"
+    },
+    {
+      "from" : "Checkout",
+      "kind" : "declared",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Checkout",
+      "kind" : "import",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "Checkout",
+      "kind" : "import",
+      "to" : "SwiftUI"
+    },
+    {
+      "count" : 2,
+      "from" : "Core",
+      "kind" : "import",
+      "to" : "Foundation"
+    },
+    {
+      "from" : "CoreTests",
+      "kind" : "declared",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "CoreTests",
+      "kind" : "import",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "CoreTests",
+      "kind" : "import",
+      "to" : "Testing"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "Analytics"
+    },
+    {
+      "from" : "SampleApp",
+      "kind" : "declared",
+      "to" : "Catalog"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "Catalog"
+    },
+    {
+      "from" : "SampleApp",
+      "kind" : "declared",
+      "to" : "Checkout"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "Checkout"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "Kingfisher"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "SwiftUI"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleAppTests",
+      "kind" : "import",
+      "to" : "SampleApp"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleAppTests",
+      "kind" : "import",
+      "to" : "Testing"
+    }
+  ],
+  "generatedAt" : "2026-10-29T12:41:42Z",
+  "nodes" : [
+    {
+      "group" : "Packages",
+      "id" : "Analytics",
+      "kind" : "library",
+      "package" : "Analytics",
+      "path" : "Packages/Analytics/Sources/Analytics",
+      "sourceFiles" : 1
+    },
+    {
+      "group" : "Packages",
+      "id" : "Catalog",
+      "kind" : "library",
+      "package" : "Features",
+      "path" : "Packages/Features/Sources/Catalog",
+      "sourceFiles" : 1
+    },
+    {
+      "group" : "Packages",
+      "id" : "Checkout",
+      "kind" : "library",
+      "package" : "Features",
+      "path" : "Packages/Features/Sources/Checkout",
+      "sourceFiles" : 1
+    },
+    {
+      "id" : "Collections",
+      "kind" : "external"
+    },
+    {
+      "group" : "Packages",
+      "id" : "Core",
+      "kind" : "library",
+      "package" : "Core",
+      "path" : "Packages/Core/Sources/Core",
+      "sourceFiles" : 2
+    },
+    {
+      "group" : "Packages",
+      "id" : "CoreTests",
+      "kind" : "test",
+      "package" : "Core",
+      "path" : "Packages/Core/Tests/CoreTests",
+      "sourceFiles" : 1
+    },
+    {
+      "id" : "Foundation",
+      "kind" : "system"
+    },
+    {
+      "id" : "Kingfisher",
+      "kind" : "external"
+    },
+    {
+      "id" : "OSLog",
+      "kind" : "system"
+    },
+    {
+      "group" : "App",
+      "id" : "SampleApp",
+      "kind" : "app",
+      "path" : "SampleApp",
+      "sourceFiles" : 1
+    },
+    {
+      "group" : "App",
+      "id" : "SampleAppTests",
+      "kind" : "test",
+      "path" : "SampleAppTests",
+      "sourceFiles" : 1
+    },
+    {
+      "id" : "SwiftUI",
+      "kind" : "system"
+    },
+    {
+      "id" : "Testing",
+      "kind" : "system"
+    }
+  ],
+  "project" : "SampleApp",
+  "version" : 1,
+  "warnings" : [
+    {
+      "code" : "unresolved-import",
+      "message" : "SampleApp imports Kingfisher, which is not a known target",
+      "path" : "SampleApp"
+    }
+  ]
+}

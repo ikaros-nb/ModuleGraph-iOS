@@ -1,0 +1,12 @@
+name: CLI tests
+on:
+  push:
+    paths: ["cli/**", "SampleApp/**", ".github/workflows/cli.yml"]
+  pull_request:
+jobs:
+  test:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test
+        working-directory: cli

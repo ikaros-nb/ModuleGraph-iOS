@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ModuleGraph</title>
+  </head>
+  <body>
+    <section id="dropzone">
+      <h1>ModuleGraph</h1>
+      <p>Drop a <code>graph.json</code> produced by the <code>modulegraph</code> CLI to explore the module graph of your iOS project. Nothing leaves your browser.</p>
+      <pre>modulegraph scan ~/Projects/MyApp --output graph.json</pre>
+      <div class="actions">
+        <button id="pick-file">Open a file…</button>
+        <button id="load-example">Load the example</button>
+      </div>
+    </section>
+
+    <main id="app" hidden>
+      <div id="toolbar">
+        <label>Layout
+          <select id="layout">
+            <option value="onion">Onion</option>
+            <option value="layers">Layers</option>
+            <option value="force">Force</option>
+          </select>
+        </label>
+        <label>Edges
+          <select id="edge-mode">
+            <option value="declared">Declared</option>
+            <option value="import">Imports</option>
+            <option value="both">Both</option>
+            <option value="gaps">Gaps</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="show-tests" /> Tests</label>
+        <label><input type="checkbox" id="show-system" /> System</label>
+        <label><input type="checkbox" id="show-external" /> External</label>
+        <label title="Hide A→C when a path A→…→C already exists"><input type="checkbox" id="hide-transitive" /> Hide transitive</label>
+        <label title="Hide modules with no visible edge"><input type="checkbox" id="hide-isolated" /> Hide isolated</label>
+        <label title="Only in the Force layout"><input type="checkbox" id="group-packages" /> Group by package</label>
+        <label>Focus <select id="focus"></select></label>
+        <label>Depth <input type="range" id="focus-depth" min="1" max="4" value="1" /> <span id="focus-depth-value">1</span></label>
+        <input type="search" id="search" placeholder="Search…" />
+        <button id="fit">Fit</button>
+        <span class="spacer"></span>
+        <span id="stats"></span>
+        <button id="open-other">Open another…</button>
+      </div>
+      <div id="stage">
+        <div id="stage-2d"></div>
+        <div id="legend">
+          <span><i class="dot" style="background:#e4572e"></i> app</span>
+          <span><i class="dot" style="background:#4f8fe6"></i> library</span>
+          <span><i class="dot" style="background:#9aa5b1"></i> test</span>
+          <span><i class="dot" style="background:#2bb673"></i> external</span>
+          <span><i class="dot" style="background:#7f8c8d"></i> system</span>
+          <span>— declared &nbsp; <span style="color:#f2a541">—</span> declared, never imported &nbsp; <span style="color:#e4572e">- -</span> imported, not declared</span>
+        </div>
+        <aside id="detail" hidden></aside>
+        <details id="warnings" hidden></details>
+      </div>
+    </main>
+    <div id="error" hidden></div>
+    <input type="file" id="file" accept="application/json,.json" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

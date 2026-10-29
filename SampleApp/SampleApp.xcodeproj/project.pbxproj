@@ -1,0 +1,48 @@
+// !$*UTF8*$!
+/* Minimal project file: only what modulegraph reads. It is not meant to be opened in Xcode. */
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		A1000000000000000000001 /* SampleApp */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SampleApp;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000002 /* SampleAppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SampleAppTests;
+			sourceTree = "<group>";
+		};
+		B1000000000000000000001 /* SampleApp */ = {
+			isa = PBXNativeTarget;
+			name = SampleApp;
+			productType = "com.apple.product-type.application";
+			fileSystemSynchronizedGroups = (
+				A1000000000000000000001 /* SampleApp */,
+			);
+			packageProductDependencies = (
+				C1000000000000000000001 /* Catalog */,
+				C1000000000000000000002 /* Checkout */,
+			);
+		};
+		B1000000000000000000002 /* SampleAppTests */ = {
+			isa = PBXNativeTarget;
+			name = SampleAppTests;
+			productType = "com.apple.product-type.bundle.unit-test";
+			fileSystemSynchronizedGroups = (
+				A1000000000000000000002 /* SampleAppTests */,
+			);
+		};
+		C1000000000000000000001 /* Catalog */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Catalog;
+		};
+		C1000000000000000000002 /* Checkout */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Checkout;
+		};
+	};
+}
