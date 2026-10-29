@@ -18,7 +18,7 @@ public struct Graph: Codable, Sendable, Equatable {
 }
 
 public struct Node: Codable, Sendable, Equatable, Hashable {
-    public enum Kind: String, Codable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
         case app, library, test, executable, macro, system, external
     }
 
@@ -40,7 +40,7 @@ public struct Node: Codable, Sendable, Equatable, Hashable {
 }
 
 public struct Edge: Codable, Sendable, Equatable, Hashable {
-    public enum Kind: String, Codable, Sendable {
+    public enum Kind: String, Codable, Sendable, CaseIterable {
         case declared, `import`
     }
 

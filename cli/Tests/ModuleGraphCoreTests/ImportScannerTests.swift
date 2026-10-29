@@ -26,7 +26,7 @@ import Testing
         let imports = ImportScanner.imports(in: source)
         #expect(imports["Fake"] == nil)
         #expect(imports["importantValue"] == nil)
-        // A comment that starts a line still matches: known V1 limitation.
+        // `import` must start the line, so a line comment never matches. Inside a /* */ block it would.
         #expect(imports["Legacy"] == nil)
     }
 }

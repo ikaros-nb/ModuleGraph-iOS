@@ -1,6 +1,7 @@
 import Foundation
 
-/// Assembles the graph from dumped packages and Xcode projects.
+/// Assembles the graph from dumped packages and Xcode projects, in three phases: collect the targets,
+/// link their declared dependencies, then scan their `import` statements.
 public struct GraphBuilder: Sendable {
     public var root: URL
     public var includeTests: Bool
@@ -14,39 +15,72 @@ public struct GraphBuilder: Sendable {
 
     struct TargetInfo {
         var node: Node
-        var sourceDirectory: URL?
+        var sourceDirectories: [URL]
         var declaredDependencies: [PackageManifest.Target.Dependency]
     }
 
-    public func build(packages: [DumpedPackage], projects: [XcodeProject], warnings initialWarnings: [Warning], now: Date) -> Graph {
-        var warnings = initialWarnings
+    /// Every target of the project, and what is needed to resolve a dependency or an import to one of them.
+    struct Catalog {
         var targets: [String: TargetInfo] = [:]
-        // product name -> target ids, scoped by package name and globally.
-        var productTargets: [String: [String]] = [:]
+        /// Product name -> target ids, per local package (by lowercased name and directory) and across all of them.
+        var productsByPackage: [String: [String: [String]]] = [:]
+        var products: [String: [String]] = [:]
+        /// Identities of the remote packages, and the products taken from them: these may be imported without a warning.
         var externalPackages: Set<String> = []
         var externalProducts: Set<String> = []
+        var warnings: [Warning] = []
+
+        func resolve(product: String, package: String? = nil) -> [String] {
+            if let package = package?.lowercased() {
+                if externalPackages.contains(package) { return [] }
+                if let ids = productsByPackage[package]?[product] { return ids.filter { targets[$0] != nil } }
+            }
+            if let ids = products[product] { return ids.filter { targets[$0] != nil } }
+            return targets[product] != nil ? [product] : []
+        }
+    }
+
+    public func build(packages: [DumpedPackage], projects: [XcodeProject], warnings: [Warning], now: Date) -> Graph {
+        let catalog = collectTargets(packages: packages, projects: projects)
+        var nodes = Dictionary(uniqueKeysWithValues: catalog.targets.map { ($0.key, $0.value.node) })
+        var edges: Set<Edge> = []
+        var warnings = warnings + catalog.warnings
+        addDeclaredEdges(catalog, nodes: &nodes, edges: &edges)
+        if scanImports { addImportEdges(catalog, nodes: &nodes, edges: &edges, warnings: &warnings) }
+
+        let sortedNodes = nodes.values.sorted { $0.id < $1.id }
+        let sortedEdges = edges.sorted { ($0.from, $0.to, $0.kind.rawValue) < ($1.from, $1.to, $1.kind.rawValue) }
+        let sortedWarnings = warnings.sorted { ($0.code, $0.path ?? "", $0.message) < ($1.code, $1.path ?? "", $1.message) }
+        return Graph(project: root.lastPathComponent, generatedAt: now, nodes: sortedNodes, edges: sortedEdges, warnings: sortedWarnings)
+    }
+
+    // MARK: - Phase 1: targets
+
+    func collectTargets(packages: [DumpedPackage], projects: [XcodeProject]) -> Catalog {
+        var catalog = Catalog()
         var localPackages = Set(packages.map { $0.manifest.name.lowercased() })
         for package in packages {
+            localPackages.insert(package.directory.lastPathComponent.lowercased())
             for dependency in package.manifest.dependencies {
                 for local in dependency.fileSystem ?? [] { localPackages.insert(local.identity.lowercased()) }
+                for external in dependency.sourceControl ?? [] { catalog.externalPackages.insert(external.identity.lowercased()) }
             }
         }
 
         for package in packages {
-            let packageName = package.manifest.name
             let packageDir = package.directory.standardizedFileURL
             let group = groupName(for: packageDir)
-            for dependency in package.manifest.dependencies {
-                for external in dependency.sourceControl ?? [] { externalPackages.insert(external.identity) }
-            }
             for product in package.manifest.products {
-                productTargets[product.name, default: []].append(contentsOf: product.targets)
+                catalog.products[product.name, default: []].append(contentsOf: product.targets)
+                for key in Set([package.manifest.name.lowercased(), packageDir.lastPathComponent.lowercased()]) {
+                    catalog.productsByPackage[key, default: [:]][product.name, default: []].append(contentsOf: product.targets)
+                }
             }
             for target in package.manifest.targets {
                 // A product that comes from a package which isn't local is external: its modules
                 // may be imported under their own names (RxSwift, FirebaseCore…) without a warning.
                 for case .product(let name, let packageName?) in target.dependencies where !localPackages.contains(packageName.lowercased()) {
-                    externalProducts.insert(name)
+                    catalog.externalProducts.insert(name)
                 }
                 let kind: Node.Kind = switch target.type {
                 case "test": .test
@@ -55,106 +89,112 @@ public struct GraphBuilder: Sendable {
                 default: .library
                 }
                 if kind == .test, !includeTests { continue }
-                if targets[target.name] != nil {
-                    warnings.append(Warning(code: "duplicate-target", path: relative(packageDir), message: "target \(target.name) is defined in several packages; keeping the first"))
+                if catalog.targets[target.name] != nil {
+                    catalog.warnings.append(Warning(code: "duplicate-target", path: relative(packageDir), message: "target \(target.name) is defined in several packages; keeping the first"))
                     continue
                 }
                 let sourceDir = sourceDirectory(for: target, kind: kind, packageDir: packageDir, manifest: package.manifest)
-                let node = Node(
-                    id: target.name,
-                    kind: kind,
-                    package: packageName,
-                    group: group,
-                    path: sourceDir.map(relative)
-                )
-                targets[target.name] = TargetInfo(node: node, sourceDirectory: sourceDir, declaredDependencies: target.dependencies)
+                let node = Node(id: target.name, kind: kind, package: package.manifest.name, group: group, path: relative(sourceDir))
+                catalog.targets[target.name] = TargetInfo(node: node, sourceDirectories: [sourceDir], declaredDependencies: target.dependencies)
             }
         }
 
         for project in projects {
+            let projectPath = relative(project.directory.appendingPathComponent(project.name + ".xcodeproj"))
             for target in project.targets {
                 if target.kind == .test, !includeTests { continue }
-                if targets[target.name] != nil {
-                    warnings.append(Warning(code: "duplicate-target", path: relative(project.directory), message: "Xcode target \(target.name) collides with a package target; keeping the package one"))
+                if catalog.targets[target.name] != nil {
+                    catalog.warnings.append(Warning(code: "duplicate-target", path: projectPath, message: "Xcode target \(target.name) collides with a package target; keeping the package one"))
                     continue
                 }
-                let sourceDir = target.sourcePaths.first.map { project.directory.appendingPathComponent($0) }
-                let node = Node(id: target.name, kind: target.kind, package: nil, group: "App", path: sourceDir.map(relative))
+                let sourceDirs = target.sourcePaths.map { project.directory.appendingPathComponent($0) }
+                if scanImports, sourceDirs.isEmpty {
+                    catalog.warnings.append(Warning(code: "no-sources", path: projectPath, message: "no Swift source folder found for Xcode target \(target.name); its imports are not scanned"))
+                }
+                let node = Node(id: target.name, kind: target.kind, package: nil, group: "App", path: sourceDirs.first.map(relative))
                 let deps = target.packageProducts.map { PackageManifest.Target.Dependency.product(name: $0, package: nil) }
-                targets[target.name] = TargetInfo(node: node, sourceDirectory: sourceDir, declaredDependencies: deps)
+                catalog.targets[target.name] = TargetInfo(node: node, sourceDirectories: sourceDirs, declaredDependencies: deps)
             }
         }
 
-        var nodes = Dictionary(uniqueKeysWithValues: targets.map { ($0.key, $0.value.node) })
-        var edges: Set<Edge> = []
-
-        func resolve(product: String) -> [String] {
-            if let ids = productTargets[product] { return ids.filter { targets[$0] != nil } }
-            if targets[product] != nil { return [product] }
-            return []
+        // A product linked by an Xcode target that no local package provides comes from a remote package.
+        for project in projects {
+            for target in project.targets {
+                for product in target.packageProducts where catalog.resolve(product: product).isEmpty {
+                    catalog.externalProducts.insert(product)
+                }
+            }
         }
+        return catalog
+    }
 
-        for (id, info) in targets {
+    // MARK: - Phase 2: declared dependencies
+
+    func addDeclaredEdges(_ catalog: Catalog, nodes: inout [String: Node], edges: inout Set<Edge>) {
+        for (id, info) in catalog.targets {
             for dependency in info.declaredDependencies {
+                let name: String
                 let resolved: [String]
-                var label: String
                 switch dependency {
-                case .product(let name, _): resolved = resolve(product: name); label = name
-                case .byName(let name): resolved = resolve(product: name); label = name
-                case .target(let name): resolved = targets[name] != nil ? [name] : []; label = name
+                case .product(let product, let package): name = product; resolved = catalog.resolve(product: product, package: package)
+                case .byName(let target): name = target; resolved = catalog.resolve(product: target)
+                case .target(let target): name = target; resolved = catalog.targets[target] != nil ? [target] : []
                 }
                 if resolved.isEmpty {
-                    let externalId = externalPackages.contains(label.lowercased()) ? label : label
-                    nodes[externalId] = nodes[externalId] ?? Node(id: externalId, kind: .external)
-                    edges.insert(Edge(from: id, to: externalId, kind: .declared))
+                    nodes[name] = nodes[name] ?? Node(id: name, kind: .external)
+                    edges.insert(Edge(from: id, to: name, kind: .declared))
                 } else {
                     for target in resolved where target != id { edges.insert(Edge(from: id, to: target, kind: .declared)) }
                 }
             }
         }
+    }
 
-        if scanImports {
-            for (id, info) in targets {
-                guard let dir = info.sourceDirectory, FileManager.default.fileExists(atPath: dir.path) else {
-                    if info.sourceDirectory != nil {
-                        warnings.append(Warning(code: "missing-sources", path: info.node.path, message: "source directory of \(id) not found"))
-                    }
+    // MARK: - Phase 3: imports
+
+    func addImportEdges(_ catalog: Catalog, nodes: inout [String: Node], edges: inout Set<Edge>, warnings: inout [Warning]) {
+        for (id, info) in catalog.targets {
+            var sourceFiles: Int?
+            var imports: [String: Int] = [:]
+            for dir in info.sourceDirectories {
+                guard FileManager.default.fileExists(atPath: dir.path) else {
+                    warnings.append(Warning(code: "missing-sources", path: relative(dir), message: "source directory of \(id) not found"))
                     continue
                 }
                 let scan = ImportScanner.scan(directory: dir)
-                nodes[id]?.sourceFiles = scan.sourceFiles
-                for (module, count) in scan.imports {
-                    if module == id { continue }
-                    if targets[module] != nil {
-                        edges.insert(Edge(from: id, to: module, kind: .import, count: count))
-                    } else if ImportScanner.systemModules.contains(module) {
-                        nodes[module] = nodes[module] ?? Node(id: module, kind: .system)
-                        edges.insert(Edge(from: id, to: module, kind: .import, count: count))
-                    } else if let ids = productTargets[module], !ids.isEmpty {
-                        for target in ids where targets[target] != nil {
-                            edges.insert(Edge(from: id, to: target, kind: .import, count: count))
-                        }
-                    } else {
-                        nodes[module] = nodes[module] ?? Node(id: module, kind: .external)
-                        edges.insert(Edge(from: id, to: module, kind: .import, count: count))
-                        if !externalPackages.contains(module.lowercased()), !externalProducts.contains(module) {
-                            warnings.append(Warning(code: "unresolved-import", path: info.node.path, message: "\(id) imports \(module), which is not a known target"))
-                        }
+                sourceFiles = (sourceFiles ?? 0) + scan.sourceFiles
+                imports.merge(scan.imports, uniquingKeysWith: +)
+            }
+            nodes[id]?.sourceFiles = sourceFiles
+            for (module, count) in imports where module != id {
+                if catalog.targets[module] != nil {
+                    edges.insert(Edge(from: id, to: module, kind: .import, count: count))
+                } else if ImportScanner.systemModules.contains(module) {
+                    nodes[module] = nodes[module] ?? Node(id: module, kind: .system)
+                    edges.insert(Edge(from: id, to: module, kind: .import, count: count))
+                } else if let ids = catalog.products[module], !ids.isEmpty {
+                    for target in ids where catalog.targets[target] != nil {
+                        edges.insert(Edge(from: id, to: target, kind: .import, count: count))
+                    }
+                } else {
+                    nodes[module] = nodes[module] ?? Node(id: module, kind: .external)
+                    edges.insert(Edge(from: id, to: module, kind: .import, count: count))
+                    if !catalog.externalPackages.contains(module.lowercased()), !catalog.externalProducts.contains(module) {
+                        warnings.append(Warning(code: "unresolved-import", path: info.node.path, message: "\(id) imports \(module), which is not a known target"))
                     }
                 }
             }
         }
-
-        let sortedNodes = nodes.values.sorted { $0.id < $1.id }
-        let sortedEdges = edges.sorted { ($0.from, $0.to, $0.kind.rawValue) < ($1.from, $1.to, $1.kind.rawValue) }
-        let sortedWarnings = warnings.sorted { ($0.code, $0.path ?? "", $0.message) < ($1.code, $1.path ?? "", $1.message) }
-        return Graph(project: root.lastPathComponent, generatedAt: now, nodes: sortedNodes, edges: sortedEdges, warnings: sortedWarnings)
     }
 
+    // MARK: - Paths
+
+    /// `url` relative to the root, or its last component when it lies outside: the JSON never holds an absolute path.
     func relative(_ url: URL) -> String {
         let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
         let path = url.standardizedFileURL.path
-        return path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : path
+        if path + "/" == rootPath { return "" }
+        return path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : url.lastPathComponent
     }
 
     func groupName(for packageDir: URL) -> String? {
@@ -163,7 +203,7 @@ public struct GraphBuilder: Sendable {
         return components.dropLast().joined(separator: "/")
     }
 
-    func sourceDirectory(for target: PackageManifest.Target, kind: Node.Kind, packageDir: URL, manifest: PackageManifest) -> URL? {
+    func sourceDirectory(for target: PackageManifest.Target, kind: Node.Kind, packageDir: URL, manifest: PackageManifest) -> URL {
         if let path = target.path { return packageDir.appendingPathComponent(path) }
         let folder = kind == .test ? "Tests" : "Sources"
         let conventional = packageDir.appendingPathComponent(folder).appendingPathComponent(target.name)

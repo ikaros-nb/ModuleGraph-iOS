@@ -1,6 +1,7 @@
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
-import schema from "./graph.schema.json";
+// The one schema of the format, shared with the CLI.
+import schema from "../../schema/graph.schema.json";
 import type { Graph } from "./types";
 
 const ajv = new Ajv2020({ allErrors: true });
@@ -29,10 +30,11 @@ export function parseGraph(text: string): Graph {
   return json;
 }
 
-export async function fetchGraph(url: string): Promise<Graph> {
+/** The text of a hosted graph, parsed by the caller like any other source. */
+export async function fetchGraphText(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) throw new GraphError(`Cannot fetch ${url}: ${response.status}`);
-  return parseGraph(await response.text());
+  return response.text();
 }
 
 const STORAGE_KEY = "modulegraph:last";
@@ -45,11 +47,18 @@ export function rememberGraph(text: string) {
   }
 }
 
-export function recallGraph(): Graph | null {
+export function recallGraph(): string | null {
   try {
-    const text = localStorage.getItem(STORAGE_KEY);
-    return text ? parseGraph(text) : null;
+    return localStorage.getItem(STORAGE_KEY);
   } catch {
     return null;
+  }
+}
+
+export function forgetGraph() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* storage unavailable */
   }
 }

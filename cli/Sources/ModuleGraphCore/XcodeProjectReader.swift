@@ -16,7 +16,10 @@ public struct XcodeProject: Sendable {
 }
 
 public enum XcodeProjectReader {
-    public struct Failure: Error { public var message: String }
+    public struct Failure: Error, CustomStringConvertible {
+        public var message: String
+        public var description: String { message }
+    }
 
     public static func read(projectURL: URL) throws -> XcodeProject {
         let name = projectURL.deletingPathExtension().lastPathComponent
@@ -32,7 +35,7 @@ public enum XcodeProjectReader {
             let data = try Data(contentsOf: pbxproj)
             return XcodeProject(name: name, directory: directory, targets: try parsePbxproj(data))
         }
-        throw Failure(message: "no project.xcproj or project.pbxproj in \(projectURL.path)")
+        throw Failure(message: "no project.xcproj or project.pbxproj")
     }
 
     // MARK: - project.xcproj (JSON with trailing commas)
@@ -83,19 +86,46 @@ public enum XcodeProjectReader {
               let objects = plist["objects"] as? [String: [String: Any]] else {
             throw Failure(message: "project.pbxproj is not an OpenStep plist")
         }
-        var paths: [String: String] = [:]
-        for (id, object) in objects where (object["isa"] as? String) == "PBXFileSystemSynchronizedRootGroup" || (object["isa"] as? String) == "PBXGroup" {
-            if let path = object["path"] as? String { paths[id] = path }
+        var parents: [String: String] = [:]
+        for (id, object) in objects {
+            for child in object["children"] as? [String] ?? [] { parents[child] = id }
+        }
+        // Path of a group or file relative to the project directory, following its enclosing groups.
+        // Nil when it lives elsewhere (SDK, build products, absolute path).
+        func path(of id: String) -> String? {
+            guard let object = objects[id] else { return nil }
+            let own = object["path"] as? String ?? ""
+            switch object["sourceTree"] as? String ?? "<group>" {
+            case "<group>":
+                guard let parent = parents[id] else { return own }
+                return path(of: parent).map { [$0, own].filter { !$0.isEmpty }.joined(separator: "/") }
+            case "SOURCE_ROOT": return own
+            default: return nil
+            }
         }
         return objects.values.filter { $0["isa"] as? String == "PBXNativeTarget" }.compactMap { target in
             guard let name = target["name"] as? String else { return nil }
             let productType = target["productType"] as? String ?? ""
             let productIDs = target["packageProductDependencies"] as? [String] ?? []
             let products = productIDs.compactMap { objects[$0]?["productName"] as? String }
-            let groupIDs = target["fileSystemSynchronizedGroups"] as? [String] ?? []
-            let sources = groupIDs.compactMap { paths[$0] }
-            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products.sorted(), sourcePaths: sources.sorted())
+            // Xcode 16 folders, then the folders of the Swift files in the Sources build phase.
+            var folders = Set((target["fileSystemSynchronizedGroups"] as? [String] ?? []).compactMap(path(of:)))
+            for phaseID in target["buildPhases"] as? [String] ?? [] {
+                guard let phase = objects[phaseID], phase["isa"] as? String == "PBXSourcesBuildPhase" else { continue }
+                for buildFileID in phase["files"] as? [String] ?? [] {
+                    guard let fileID = objects[buildFileID]?["fileRef"] as? String, let file = path(of: fileID), file.hasSuffix(".swift") else { continue }
+                    folders.insert((file as NSString).deletingLastPathComponent)
+                }
+            }
+            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products.sorted(), sourcePaths: outermost(folders))
         }.sorted { $0.name < $1.name }
+    }
+
+    /// The folders that aren't inside another one of the set, sorted.
+    static func outermost(_ folders: Set<String>) -> [String] {
+        folders.filter { folder in
+            !folders.contains { other in other != folder && (other.isEmpty || folder.hasPrefix(other + "/")) }
+        }.sorted()
     }
 
     static func kind(forProductType type: String) -> Node.Kind {

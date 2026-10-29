@@ -1,10 +1,10 @@
 import "./style.css";
-import { buildViewModel, defaultFilters, dependencies, dependents, type EdgeMode, type Filters, type LayoutMode } from "./graph-model";
-import { escapeHtml as esc } from "./html";
-import { fetchGraph, GraphError, parseGraph, recallGraph, rememberGraph } from "./load";
+import { buildViewModel, defaultFilters, dependencies, dependents, type EdgeMode, type Filters, type LayoutMode, type ViewModel } from "./graph-model";
+import { type Child, h } from "./dom";
+import { fetchGraphText, forgetGraph, GraphError, parseGraph, recallGraph, rememberGraph } from "./load";
 import type { Graph } from "./types";
 import { View2D } from "./view-2d";
-import { kindColors } from "./theme";
+import { edgeColors, edgeLabels, kindColors } from "./theme";
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 
@@ -19,25 +19,32 @@ const errorBox = $("#error");
 
 const view = new View2D(stage, select);
 
+let errorTimer: number | undefined;
 function showError(message: string) {
   errorBox.textContent = message;
   errorBox.hidden = false;
-  setTimeout(() => (errorBox.hidden = true), 8000);
+  clearTimeout(errorTimer);
+  errorTimer = window.setTimeout(() => (errorBox.hidden = true), 8000);
 }
 
-function load(text: string) {
+/** Parse and show a graph file. Returns false, after showing the error, when it isn't one. */
+function load(text: string): boolean {
   try {
     graph = parseGraph(text);
-    rememberGraph(text);
-    selected = null;
-    filters = { ...defaultFilters, edgeMode: graph.edges.some((e) => e.kind === "import") ? "both" : "declared" };
-    syncControls();
-    dropzone.hidden = true;
-    app.hidden = false;
-    render();
   } catch (error) {
     showError(error instanceof GraphError ? error.message : String(error));
+    return false;
   }
+  rememberGraph(text);
+  selected = null;
+  filters = { ...defaultFilters, edgeMode: graph.edges.some((e) => e.kind === "import") ? "both" : "declared" };
+  renderFocusOptions();
+  renderWarnings();
+  syncControls();
+  dropzone.hidden = true;
+  app.hidden = false;
+  render();
+  return true;
 }
 
 function render() {
@@ -52,9 +59,24 @@ function render() {
   view.resize();
   view.render(vm, filters.layout);
   view.select(selected);
-  renderFocusOptions(vm.nodes.map((n) => n.id));
-  renderWarnings();
+  renderLegend(vm);
   renderDetail();
+}
+
+// Panels are built with DOM APIs: values from the file only ever become text or attributes.
+function renderLegend(vm: ViewModel) {
+  const kinds = new Set(vm.nodes.map((n) => n.kind));
+  const statuses = new Set(vm.edges.map((e) => e.status));
+  const nodeItems = Object.entries(kindColors)
+    .filter(([kind]) => kinds.has(kind as keyof typeof kindColors))
+    .map(([kind, color]) => h("span", {}, h("i", { class: "dot", style: `background:${color}` }), kind));
+  const edgeItems = Object.entries(edgeLabels)
+    .filter(([status]) => statuses.has(status as keyof typeof edgeLabels))
+    .map(([status, label]) => {
+      const style = `border-top-color:${edgeColors[status as keyof typeof edgeColors]}${status === "import-only" ? ";border-top-style:dashed" : ""}`;
+      return h("span", {}, h("i", { class: "line", style }), label);
+    });
+  $("#legend").replaceChildren(...nodeItems, ...edgeItems);
 }
 
 function select(id: string | null) {
@@ -63,54 +85,58 @@ function select(id: string | null) {
   renderDetail();
 }
 
+function button(label: string, onClick: () => void, attributes: Record<string, string> = {}) {
+  const element = h("button", attributes, label);
+  element.addEventListener("click", onClick);
+  return element;
+}
+
 function renderDetail() {
   const panel = $("#detail");
-  if (!graph || !selected) {
-    panel.hidden = true;
-    return;
-  }
-  const node = graph.nodes.find((n) => n.id === selected);
-  if (!node) {
-    panel.hidden = true;
-    return;
-  }
-  // Every value from the file is escaped: a graph loaded from ?url= is untrusted.
-  const list = (ids: string[]) => (ids.length ? ids.map((id) => `<li><button class="link" data-id="${esc(id)}">${esc(id)}</button></li>`).join("") : "<li class='muted'>none</li>");
-  panel.hidden = false;
-  panel.innerHTML = `
-    <header><span class="dot" style="background:${kindColors[node.kind]}"></span><h2>${esc(node.id)}</h2><button id="close-detail" aria-label="Close">×</button></header>
-    <dl>
-      <dt>Kind</dt><dd>${esc(node.kind)}</dd>
-      ${node.package ? `<dt>Package</dt><dd>${esc(node.package)}</dd>` : ""}
-      ${node.group ? `<dt>Group</dt><dd>${esc(node.group)}</dd>` : ""}
-      ${node.path ? `<dt>Path</dt><dd><code>${esc(node.path)}</code></dd>` : ""}
-      ${node.sourceFiles != null ? `<dt>Swift files</dt><dd>${esc(node.sourceFiles)}</dd>` : ""}
-    </dl>
-    <h3>Depends on (${dependencies(graph, node.id).length})</h3><ul>${list(dependencies(graph, node.id))}</ul>
-    <h3>Used by (${dependents(graph, node.id).length})</h3><ul>${list(dependents(graph, node.id))}</ul>
-    <button id="focus-node">Focus on this module</button>`;
-  panel.querySelector("#close-detail")!.addEventListener("click", () => select(null));
-  panel.querySelector("#focus-node")!.addEventListener("click", () => {
-    filters.focus = node.id;
-    syncControls();
-    render();
-  });
-  panel.querySelectorAll<HTMLButtonElement>("button.link").forEach((b) => b.addEventListener("click", () => select(b.dataset.id!)));
+  const node = graph && selected ? graph.nodes.find((n) => n.id === selected) : undefined;
+  panel.hidden = !node;
+  if (!graph || !node) return;
+  const list = (ids: string[]) =>
+    h("ul", {}, ...(ids.length ? ids.map((id) => h("li", {}, button(id, () => select(id), { class: "link" }))) : [h("li", { class: "muted" }, "none")]));
+  const field = (label: string, value: Child) => (value == null || value === "" ? [] : [h("dt", {}, label), h("dd", {}, value)]);
+  const uses = dependencies(graph, node.id);
+  const usedBy = dependents(graph, node.id);
+  panel.replaceChildren(
+    h("header", {}, h("span", { class: "dot", style: `background:${kindColors[node.kind]}` }), h("h2", {}, node.id), button("×", () => select(null), { "aria-label": "Close" })),
+    h(
+      "dl",
+      {},
+      ...field("Kind", node.kind),
+      ...field("Package", node.package),
+      ...field("Group", node.group),
+      ...field("Path", node.path && h("code", {}, node.path)),
+      ...field("Swift files", node.sourceFiles),
+    ),
+    h("h3", {}, `Depends on (${uses.length})`),
+    list(uses),
+    h("h3", {}, `Used by (${usedBy.length})`),
+    list(usedBy),
+    button("Focus on this module", () => {
+      filters.focus = node.id;
+      syncControls();
+      render();
+    }),
+  );
 }
 
 function renderWarnings() {
   const box = $("#warnings");
   const warnings = graph?.warnings ?? [];
   box.hidden = warnings.length === 0;
-  box.innerHTML = `<summary>${warnings.length} warning${warnings.length > 1 ? "s" : ""}</summary><ul>${warnings
-    .map((w) => `<li><code>${esc(w.code)}</code> ${w.path ? `<code>${esc(w.path)}</code> ` : ""}${esc(w.message)}</li>`)
-    .join("")}</ul>`;
+  box.replaceChildren(
+    h("summary", {}, `${warnings.length} warning${warnings.length > 1 ? "s" : ""}`),
+    h("ul", {}, ...warnings.map((w) => h("li", {}, h("code", {}, w.code), " ", w.path && h("code", {}, w.path), w.path && " ", w.message))),
+  );
 }
 
-function renderFocusOptions(ids: string[]) {
-  const focus = $<HTMLSelectElement>("#focus");
-  const all = graph?.nodes.map((n) => n.id) ?? ids;
-  focus.innerHTML = `<option value="">Whole graph</option>${all.map((id) => `<option value="${esc(id)}" ${filters.focus === id ? "selected" : ""}>${esc(id)}</option>`).join("")}`;
+function renderFocusOptions() {
+  const ids = graph?.nodes.map((n) => n.id) ?? [];
+  $("#focus").replaceChildren(h("option", { value: "" }, "Whole graph"), ...ids.map((id) => h("option", { value: id }, id)));
 }
 
 function syncControls() {
@@ -120,6 +146,7 @@ function syncControls() {
   $<HTMLInputElement>("#group-packages").checked = filters.groupByPackage;
   $<HTMLSelectElement>("#edge-mode").value = filters.edgeMode;
   $<HTMLSelectElement>("#layout").value = filters.layout;
+  $<HTMLSelectElement>("#focus").value = filters.focus ?? "";
   $<HTMLInputElement>("#hide-transitive").checked = filters.hideTransitive;
   $<HTMLInputElement>("#hide-isolated").checked = filters.hideIsolated;
   $<HTMLInputElement>("#group-packages").disabled = filters.layout !== "force";
@@ -168,29 +195,28 @@ $("#load-example").addEventListener("click", async () => {
   }
 });
 
-for (const target of [document.body]) {
-  target.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropzone.classList.add("over");
-  });
-  target.addEventListener("dragleave", () => dropzone.classList.remove("over"));
-  target.addEventListener("drop", async (e) => {
-    e.preventDefault();
-    dropzone.classList.remove("over");
-    const file = e.dataTransfer?.files?.[0];
-    if (file) load(await file.text());
-  });
-}
+document.body.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropzone.classList.add("over");
+});
+document.body.addEventListener("dragleave", () => dropzone.classList.remove("over"));
+document.body.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  dropzone.classList.remove("over");
+  const file = e.dataTransfer?.files?.[0];
+  if (file) load(await file.text());
+});
 
 window.addEventListener("resize", () => view.resize());
 
 // Startup: ?url=, then last file, else dropzone.
 const urlParam = new URLSearchParams(location.search).get("url");
 if (urlParam) {
-  fetchGraph(urlParam)
-    .then((g) => load(JSON.stringify(g)))
-    .catch((error) => showError(String(error)));
+  fetchGraphText(urlParam)
+    .then(load)
+    .catch((error) => showError(error instanceof Error ? error.message : String(error)));
 } else {
   const last = recallGraph();
-  if (last) load(JSON.stringify(last));
+  // A stored file that no longer parses would fail on every visit.
+  if (last && !load(last)) forgetGraph();
 }

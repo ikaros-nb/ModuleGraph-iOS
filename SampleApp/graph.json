@@ -136,6 +136,17 @@
       "to" : "Kingfisher"
     },
     {
+      "from" : "SampleApp",
+      "kind" : "declared",
+      "to" : "Lottie"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleApp",
+      "kind" : "import",
+      "to" : "Lottie"
+    },
+    {
       "count" : 1,
       "from" : "SampleApp",
       "kind" : "import",
@@ -152,9 +163,32 @@
       "from" : "SampleAppTests",
       "kind" : "import",
       "to" : "Testing"
+    },
+    {
+      "from" : "SampleWidget",
+      "kind" : "declared",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleWidget",
+      "kind" : "import",
+      "to" : "Core"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleWidget",
+      "kind" : "import",
+      "to" : "SwiftUI"
+    },
+    {
+      "count" : 1,
+      "from" : "SampleWidget",
+      "kind" : "import",
+      "to" : "WidgetKit"
     }
   ],
-  "generatedAt" : "2026-10-29T12:41:42Z",
+  "generatedAt" : "2026-10-29T12:54:46Z",
   "nodes" : [
     {
       "group" : "Packages",
@@ -209,6 +243,10 @@
       "kind" : "external"
     },
     {
+      "id" : "Lottie",
+      "kind" : "external"
+    },
+    {
       "id" : "OSLog",
       "kind" : "system"
     },
@@ -227,11 +265,22 @@
       "sourceFiles" : 1
     },
     {
+      "group" : "App",
+      "id" : "SampleWidget",
+      "kind" : "app",
+      "path" : "SampleWidget",
+      "sourceFiles" : 1
+    },
+    {
       "id" : "SwiftUI",
       "kind" : "system"
     },
     {
       "id" : "Testing",
+      "kind" : "system"
+    },
+    {
+      "id" : "WidgetKit",
       "kind" : "system"
     }
   ],

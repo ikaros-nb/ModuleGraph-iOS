@@ -19,4 +19,14 @@ export const edgeColors: Record<ViewEdge["status"], string> = {
   "import-only": "#e4572e",
 };
 
-export const isDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+export const edgeLabels: Record<ViewEdge["status"], string> = {
+  declared: "declared",
+  import: "imported",
+  both: "declared and imported",
+  "declared-only": "declared, never imported",
+  "import-only": "imported, not declared",
+};
+
+const darkQuery = "(prefers-color-scheme: dark)";
+export const labelColor = () => (window.matchMedia(darkQuery).matches ? "#e6e6e6" : "#1a1a1a");
+export const onColorSchemeChange = (callback: () => void) => window.matchMedia(darkQuery).addEventListener("change", callback);

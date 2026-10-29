@@ -74,34 +74,59 @@ public enum ManifestDumper {
         // manager such as swiftly can't satisfy doesn't block the dump.
         if FileManager.default.fileExists(atPath: "/usr/bin/xcrun") {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-            process.arguments = ["swift", "package", "dump-package"]
         } else {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["swift", "package", "dump-package"]
         }
+        process.arguments = ["swift", "package", "dump-package"]
         process.currentDirectoryURL = directory
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let message = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw Failure(directory: directory, message: message.isEmpty ? "exit \(process.terminationStatus)" : message)
+        let output = try await run(process)
+        guard output.status == 0 else {
+            let message = String(decoding: output.stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw Failure(directory: directory, message: message.isEmpty ? "exit \(output.status)" : message)
         }
         do {
-            return try PackageManifest.decode(data)
+            return try PackageManifest.decode(output.stdout)
         } catch {
             throw Failure(directory: directory, message: "cannot decode dump-package output: \(error)")
         }
     }
 
-    public static func dumpAll(directories: [URL]) async -> (packages: [DumpedPackage], warnings: [Warning]) {
+    /// Runs `process` to completion on a Dispatch thread rather than the cooperative pool, draining
+    /// stdout and stderr concurrently so that a full pipe can never block the child.
+    static func run(_ process: Process) async throws -> (status: Int32, stdout: Data, stderr: Data) {
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async {
+                do {
+                    try process.run()
+                } catch {
+                    return continuation.resume(throwing: error)
+                }
+                let errors = DataBox()
+                let group = DispatchGroup()
+                DispatchQueue.global().async(group: group) { errors.data = stderr.fileHandleForReading.readDataToEndOfFile() }
+                let output = stdout.fileHandleForReading.readDataToEndOfFile()
+                group.wait()
+                process.waitUntilExit()
+                continuation.resume(returning: (process.terminationStatus, output, errors.data))
+            }
+        }
+    }
+
+    /// Written by one reader thread, read after `DispatchGroup.wait()`.
+    private final class DataBox: @unchecked Sendable {
+        var data = Data()
+    }
+
+    /// Dumps every package, at most one per processor at a time.
+    public static func dumpAll(directories: [URL]) async -> (packages: [DumpedPackage], failures: [Failure]) {
         await withTaskGroup(of: Result<DumpedPackage, Failure>.self) { group in
-            for directory in directories {
+            var pending = directories[...]
+            func addNext() {
+                guard let directory = pending.popFirst() else { return }
                 group.addTask {
                     do {
                         return .success(DumpedPackage(directory: directory, manifest: try await dump(directory: directory)))
@@ -112,17 +137,19 @@ public enum ManifestDumper {
                     }
                 }
             }
+            for _ in 0..<max(1, ProcessInfo.processInfo.activeProcessorCount) { addNext() }
             var packages: [DumpedPackage] = []
-            var warnings: [Warning] = []
+            var failures: [Failure] = []
             for await result in group {
                 switch result {
                 case .success(let package): packages.append(package)
-                case .failure(let failure):
-                    warnings.append(Warning(code: "manifest-dump-failed", path: failure.directory.path, message: failure.message))
+                case .failure(let failure): failures.append(failure)
                 }
+                addNext()
             }
             packages.sort { $0.directory.path < $1.directory.path }
-            return (packages, warnings)
+            failures.sort { $0.directory.path < $1.directory.path }
+            return (packages, failures)
         }
     }
 }

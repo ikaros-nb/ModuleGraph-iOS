@@ -1,7 +1,9 @@
 import cytoscape, { type Core } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import type { LayoutMode, ViewModel } from "./graph-model";
-import { edgeColors, isDark, kindColors } from "./theme";
+import { edgeColors, kindColors, labelColor, onColorSchemeChange } from "./theme";
+
+type Position = { x: number; y: number };
 
 cytoscape.use(fcose);
 
@@ -20,7 +22,7 @@ export class View2D {
           style: {
             label: "data(label)",
             "background-color": "data(color)",
-            color: isDark() ? "#e6e6e6" : "#1a1a1a",
+            color: labelColor(),
             "font-size": 18,
             "text-valign": "bottom",
             "text-margin-y": 6,
@@ -73,11 +75,15 @@ export class View2D {
       if (this.cy.$(":selected").nonempty()) return;
       this.cy.elements().removeClass("dim");
     });
+    onColorSchemeChange(() => this.cy.style().selector("node").style("color", labelColor()).update());
   }
+
+  /** What the last render laid out: a render that changes none of it only restyles. */
+  private topology = "";
 
   private ringGuides: { id: string; label: string; radius: number }[] = [];
 
-  private layoutOptions(vm: ViewModel, layout: LayoutMode): object {
+  private layoutOptions(vm: ViewModel, layout: LayoutMode, seeded: boolean): object {
     const maxDepth = Math.max(0, ...vm.depths.values());
     this.ringGuides = [];
     switch (layout) {
@@ -118,12 +124,26 @@ export class View2D {
         return { name: "preset", animate: false, padding: 40, positions: (node: { id(): string }) => positions[node.id()] };
       }
       default:
-        return { name: "fcose", animate: false, nodeSeparation: 120, idealEdgeLength: () => 140, nodeRepulsion: () => 9000, randomize: true };
+        // Seeded from the previous Force positions when there are some, so that toggling a filter doesn't reshuffle the graph.
+        return { name: "fcose", animate: false, nodeSeparation: 120, idealEdgeLength: () => 140, nodeRepulsion: () => 9000, randomize: !seeded };
     }
   }
 
   render(vm: ViewModel, layout: LayoutMode = "onion") {
     const compound = layout === "force";
+    const topology = JSON.stringify([
+      layout,
+      compound ? [...vm.packages] : [],
+      vm.nodes.map((n) => [n.id, n.kind, n.sourceFiles]),
+      vm.edges.map((e) => [e.from, e.to, e.status, e.count]),
+    ]);
+    if (topology === this.topology) {
+      this.cy.nodes(".highlight").removeClass("highlight");
+      this.cy.nodes().filter((n) => vm.highlighted.has(n.id())).addClass("highlight");
+      return;
+    }
+    const seeds = compound && this.topology.startsWith('["force"') ? this.seedPositions(vm) : null;
+    this.topology = topology;
     const elements = [
       ...(compound ? [...vm.packages.keys()] : []).map((name) => ({ data: { id: `pkg:${name}`, label: name, color: "#8a94a6", size: 1 } })),
       ...vm.nodes.map((n) => {
@@ -137,6 +157,7 @@ export class View2D {
             parent,
           },
           classes: vm.highlighted.has(n.id) ? "highlight" : "",
+          position: seeds?.get(n.id),
         };
       }),
       ...vm.edges.map((e) => ({
@@ -150,7 +171,7 @@ export class View2D {
         },
       })),
     ];
-    const options = this.layoutOptions(vm, layout);
+    const options = this.layoutOptions(vm, layout, seeds != null);
     this.cy.elements().remove();
     this.cy.add(elements);
     if (layout === "onion") {
@@ -159,6 +180,25 @@ export class View2D {
     this.cy.layout({ ...options, eles: this.cy.nodes().not(".ring") } as never).run();
     this.cy.nodes(".ring").positions({ x: 0, y: 0 });
     this.cy.fit(undefined, 40);
+  }
+
+  /** Current positions for the nodes already shown, next to a neighbour for the new ones. Null when most nodes are new. */
+  private seedPositions(vm: ViewModel): Map<string, Position> | null {
+    const previous = new Map<string, Position>();
+    this.cy.nodes().not(".ring").not(":parent").forEach((n) => void previous.set(n.id(), { ...n.position() }));
+    if (vm.nodes.filter((n) => previous.has(n.id)).length < vm.nodes.length / 2) return null;
+    const seeds = new Map<string, Position>();
+    for (const n of vm.nodes) {
+      const known = previous.get(n.id);
+      if (known) {
+        seeds.set(n.id, known);
+        continue;
+      }
+      const neighbour = vm.edges.map((e) => (e.from === n.id ? e.to : e.to === n.id ? e.from : "")).find((id) => previous.has(id));
+      const anchor = (neighbour && previous.get(neighbour)) || { x: 0, y: 0 };
+      seeds.set(n.id, { x: anchor.x + (Math.random() - 0.5) * 120, y: anchor.y + (Math.random() - 0.5) * 120 });
+    }
+    return seeds;
   }
 
   select(id: string | null) {

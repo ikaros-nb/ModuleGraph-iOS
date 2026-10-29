@@ -48,6 +48,6 @@ public enum ImportScanner {
         "QuartzCore", "ImageIO", "UniformTypeIdentifiers", "Contacts", "EventKit", "MessageUI", "PassKit",
         "BackgroundTasks", "ActivityKit", "SwiftCompilerPlugin", "SwiftSyntax", "SwiftSyntaxMacros", "SwiftSyntaxBuilder",
         "PackageDescription", "System", "FoundationEssentials", "FoundationNetworking", "AdSupport", "AppTrackingTransparency",
-        "Cocoa", "ObjectiveC", "SwiftUICore", "DeveloperToolsSupport", "XCTest", "Testing", "StoreKitTest", "CoreNFC", "CoreSpotlight", "CarPlay", "SwiftData",
+        "Cocoa", "ObjectiveC", "SwiftUICore", "DeveloperToolsSupport", "StoreKitTest", "CoreNFC", "CoreSpotlight", "CarPlay",
     ]
 }

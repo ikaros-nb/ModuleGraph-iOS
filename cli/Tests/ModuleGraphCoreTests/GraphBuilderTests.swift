@@ -50,4 +50,66 @@ import Testing
         // The directory doesn't exist, and a package with one test target may keep its tests in Tests/ directly.
         #expect(with.nodes.last?.path == "Packages/Toolkit/Tests")
     }
+
+    @Test func resolvesAProductInItsOwnPackage() throws {
+        // Both packages export a product called Shared; Feature asks for the one of Kit.
+        let kit = try manifest("""
+        { "name": "Kit", "dependencies": [], "products": [ { "name": "Shared", "targets": ["KitShared"] } ],
+          "targets": [ { "name": "KitShared", "type": "regular", "dependencies": [] } ] }
+        """)
+        let other = try manifest("""
+        { "name": "Other", "dependencies": [], "products": [ { "name": "Shared", "targets": ["OtherShared"] } ],
+          "targets": [ { "name": "OtherShared", "type": "regular", "dependencies": [] },
+                       { "name": "Feature", "type": "regular", "dependencies": [ { "product": ["Shared", "Kit", null, null] } ] } ] }
+        """)
+        let graph = GraphBuilder(root: root, includeTests: false, scanImports: false).build(
+            packages: [
+                DumpedPackage(directory: root.appendingPathComponent("Kit"), manifest: kit),
+                DumpedPackage(directory: root.appendingPathComponent("Other"), manifest: other),
+            ],
+            projects: [], warnings: [], now: now
+        )
+        #expect(graph.edges == [Edge(from: "Feature", to: "KitShared", kind: .declared)])
+    }
+
+    @Test func scansImports() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func write(_ path: String, _ text: String) throws {
+            let url = dir.appendingPathComponent(path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        try write("Packages/Kit/Sources/Kit/Kit.swift", "import Foundation\nimport Collections\n")
+        try write("App/App.swift", "import Kit\nimport Kit\nimport SwiftUI\nimport Lottie\nimport Mystery\n")
+        try write("App/Views/Home.swift", "import Kit\n")
+        let kit = try manifest("""
+        { "name": "Kit", "dependencies": [ { "sourceControl": [ { "identity": "swift-collections" } ] } ], "products": [],
+          "targets": [ { "name": "Kit", "type": "regular", "dependencies": [ { "product": ["Collections", "swift-collections", null, null] } ] } ] }
+        """)
+        let app = XcodeProject(name: "App", directory: dir, targets: [
+            XcodeTarget(name: "App", kind: .app, packageProducts: ["Kit", "Lottie"], sourcePaths: ["App"]),
+            XcodeTarget(name: "Widget", kind: .app, packageProducts: [], sourcePaths: []),
+        ])
+        let graph = GraphBuilder(root: dir, includeTests: false, scanImports: true).build(
+            packages: [DumpedPackage(directory: dir.appendingPathComponent("Packages/Kit"), manifest: kit)],
+            projects: [app], warnings: [], now: now
+        )
+        #expect(graph.nodes.first { $0.id == "App" }?.sourceFiles == 2)
+        #expect(graph.nodes.first { $0.id == "SwiftUI" }?.kind == .system)
+        #expect(graph.nodes.first { $0.id == "Lottie" }?.kind == .external)
+        #expect(graph.edges.filter { $0.kind == .import } == [
+            Edge(from: "App", to: "Kit", kind: .import, count: 3),
+            Edge(from: "App", to: "Lottie", kind: .import, count: 1),
+            Edge(from: "App", to: "Mystery", kind: .import, count: 1),
+            Edge(from: "App", to: "SwiftUI", kind: .import, count: 1),
+            Edge(from: "Kit", to: "Collections", kind: .import, count: 1),
+            Edge(from: "Kit", to: "Foundation", kind: .import, count: 1),
+        ])
+        // Lottie is linked by the Xcode target and Collections comes from a remote package: only Mystery is unknown.
+        #expect(graph.warnings == [
+            Warning(code: "no-sources", path: "App.xcodeproj", message: "no Swift source folder found for Xcode target Widget; its imports are not scanned"),
+            Warning(code: "unresolved-import", path: "App", message: "App imports Mystery, which is not a known target"),
+        ])
+    }
 }
