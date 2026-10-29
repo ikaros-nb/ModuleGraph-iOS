@@ -53,6 +53,11 @@ describe("buildViewModel", () => {
     expect(vm.nodes.map((n) => n.id).sort()).toEqual(["App", "Domain", "Toolkit"]);
   });
 
+  it("keeps the focused module when its kind is hidden", () => {
+    const vm = buildViewModel(graph, { ...defaultFilters, edgeMode: "both", focus: "Foundation", focusDepth: 1 });
+    expect(vm.nodes.map((n) => n.id).sort()).toEqual(["Domain", "Foundation"]);
+  });
+
   it("groups packages with several targets", () => {
     const vm = buildViewModel(graph, { ...defaultFilters, groupByPackage: true });
     expect([...vm.packages.keys()]).toEqual(["Domain"]);

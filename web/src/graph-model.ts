@@ -93,8 +93,11 @@ function neighbourhood(ids: Set<string>, edges: ViewEdge[], start: string, depth
 
 export function buildViewModel(graph: Graph, filters: Filters): ViewModel {
   const hasImportEdges = graph.edges.some((e) => e.kind === "import");
+  // The focused module stays, whatever its kind: focusing on Foundation shows who uses it.
   let nodes = graph.nodes.filter(
-    (n) => (filters.showTests || n.kind !== "test") && (filters.showSystem || n.kind !== "system") && (filters.showExternal || n.kind !== "external"),
+    (n) =>
+      n.id === filters.focus ||
+      ((filters.showTests || n.kind !== "test") && (filters.showSystem || n.kind !== "system") && (filters.showExternal || n.kind !== "external")),
   );
   let ids = new Set(nodes.map((n) => n.id));
   let merged = mergeEdges(graph.edges.filter((e) => ids.has(e.from) && ids.has(e.to)));

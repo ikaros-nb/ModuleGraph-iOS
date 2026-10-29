@@ -11,6 +11,8 @@ const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>
 let graph: Graph | null = null;
 let filters: Filters = { ...defaultFilters };
 let selected: string | null = null;
+/** Modules on screen: the detail panel links only to those. */
+let visible = new Set<string>();
 
 const dropzone = $("#dropzone");
 const app = $("#app");
@@ -30,8 +32,9 @@ function showError(message: string) {
 /**
  * Parse and show a graph file. Returns false, after showing the error, when it isn't one: the graph on
  * screen stays when the file doesn't parse, and the dropzone comes back when it parses but can't be drawn.
+ * A hosted graph isn't remembered: its URL brings it back, and the user's own last file is kept.
  */
-function load(text: string): boolean {
+function load(text: string, remember = true): boolean {
   let parsed: Graph;
   try {
     parsed = parseGraph(text);
@@ -57,13 +60,14 @@ function load(text: string): boolean {
     return false;
   }
   // Only a file that rendered is kept: a stored one is shown again on every visit.
-  rememberGraph(text);
+  if (remember) rememberGraph(text);
   return true;
 }
 
 function render() {
   if (!graph) return;
   const vm = buildViewModel(graph, filters);
+  visible = new Set(vm.nodes.map((n) => n.id));
   const extras = [
     vm.transitiveHidden ? `${vm.transitiveHidden} transitive hidden` : "",
     vm.isolated.length ? `${vm.isolated.length} isolated hidden` : "",
@@ -110,8 +114,10 @@ function renderDetail() {
   const node = graph && selected ? graph.nodes.find((n) => n.id === selected) : undefined;
   panel.hidden = !node;
   if (!graph || !node) return;
-  const list = (ids: string[]) =>
-    h("ul", {}, ...(ids.length ? ids.map((id) => h("li", {}, button(id, () => select(id), { class: "link" }))) : [h("li", { class: "muted" }, "none")]));
+  // A module hidden by the filters can't be selected on the graph: it is listed as plain text.
+  const item = (id: string) =>
+    h("li", {}, visible.has(id) ? button(id, () => select(id), { class: "link" }) : h("span", { class: "muted", title: "Hidden by the current filters" }, id));
+  const list = (ids: string[]) => h("ul", {}, ...(ids.length ? ids.map(item) : [h("li", { class: "muted" }, "none")]));
   const field = (label: string, value: Child) => (value == null || value === "" ? [] : [h("dt", {}, label), h("dd", {}, value)]);
   const uses = dependencies(graph, node.id);
   const usedBy = dependents(graph, node.id);
@@ -213,7 +219,10 @@ document.body.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.classList.add("over");
 });
-document.body.addEventListener("dragleave", () => dropzone.classList.remove("over"));
+// dragleave also fires when moving over a child element: only leaving the window counts.
+document.body.addEventListener("dragleave", (e) => {
+  if (!e.relatedTarget) dropzone.classList.remove("over");
+});
 document.body.addEventListener("drop", async (e) => {
   e.preventDefault();
   dropzone.classList.remove("over");
@@ -227,7 +236,7 @@ window.addEventListener("resize", () => view.resize());
 const urlParam = new URLSearchParams(location.search).get("url");
 if (urlParam) {
   fetchGraphText(urlParam)
-    .then(load)
+    .then((text) => load(text, false))
     .catch((error) => showError(error instanceof Error ? error.message : String(error)));
 } else {
   const last = recallGraph();
