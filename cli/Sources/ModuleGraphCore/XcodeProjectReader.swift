@@ -59,11 +59,11 @@ public enum XcodeProjectReader {
 
         let targets = json["targets"] as? [[String: Any]] ?? []
         return targets.compactMap { target in
-            guard let name = target["name"] as? String else { return nil }
-            let productType = target["product-type"] as? String ?? target["type"] as? String ?? ""
+            guard let name = target["name"] as? String,
+                  let kind = kind(forProductType: target["product-type"] as? String ?? target["type"] as? String ?? "") else { return nil }
             let deps = target["dependencies"] as? [[String: Any]] ?? []
             let products = deps.filter { $0["kind"] as? String == "package" }.compactMap { $0["product-name"] as? String }
-            return XcodeTarget(name: name, kind: kind(forProductType: productType), packageProducts: products, sourcePaths: sourcePaths[name] ?? [])
+            return XcodeTarget(name: name, kind: kind, packageProducts: products, sourcePaths: sourcePaths[name] ?? [])
         }
     }
 
@@ -108,7 +108,7 @@ public enum XcodeProjectReader {
             }
         }
         let nativeTargets = objects.filter { $0.value["isa"] as? String == "PBXNativeTarget" }
-        let kinds = nativeTargets.mapValues { kind(forProductType: $0["productType"] as? String ?? "") }
+        let kinds = nativeTargets.compactMapValues { kind(forProductType: $0["productType"] as? String ?? "") }
         return nativeTargets.compactMap { id, target in
             guard let name = target["name"] as? String, let targetKind = kinds[id] else { return nil }
             let productIDs = target["packageProductDependencies"] as? [String] ?? []
@@ -146,8 +146,10 @@ public enum XcodeProjectReader {
         }.sorted()
     }
 
-    static func kind(forProductType type: String) -> Node.Kind {
-        if type.contains("unit-test") || type.contains("ui-testing") || type.contains("test") { return .test }
+    /// The kind of a target of that product type, nil for a resource bundle: it holds no code.
+    static func kind(forProductType type: String) -> Node.Kind? {
+        if type.contains("test") { return .test }
+        if type == "com.apple.product-type.bundle" { return nil }
         if type.contains("application") || type.contains("app-extension") || type.isEmpty { return .app }
         if type.contains("framework") || type.contains("library") { return .library }
         if type.contains("tool") { return .executable }

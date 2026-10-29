@@ -86,6 +86,7 @@ import Testing
             T2 = { isa = PBXNativeTarget; name = UI; productType = "com.apple.product-type.framework"; };
             T3 = { isa = PBXNativeTarget; name = Widget; productType = "com.apple.product-type.app-extension"; };
             T4 = { isa = PBXNativeTarget; name = AppTests; productType = "com.apple.product-type.bundle.unit-test"; dependencies = ( D4 ); };
+            T5 = { isa = PBXNativeTarget; name = Resources; productType = "com.apple.product-type.bundle"; };
             D1 = { isa = PBXTargetDependency; target = T2; };
             D2 = { isa = PBXTargetDependency; target = T3; };
             D3 = { isa = PBXTargetDependency; name = OtherProjectTarget; };
@@ -97,5 +98,7 @@ import Testing
         #expect(targets.first { $0.name == "App" }?.targetDependencies == ["UI"])
         #expect(targets.first { $0.name == "AppTests" }?.targetDependencies == ["App"])
         #expect(targets.first { $0.name == "UI" }?.targetDependencies == [])
+        // A resource bundle holds no code: it is no module.
+        #expect(targets.map(\.name) == ["App", "AppTests", "UI", "Widget"])
     }
 }
